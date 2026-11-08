@@ -11,7 +11,8 @@ and have an allowed license, otherwise the check fails.
 Binary wheels may also bundle native libraries under licenses of their own,
 which the package's License-Expression does not cover (numpy lists OpenBLAS
 and the GCC runtime in its license file). Those entries are read from the
-license files and checked the same way. Only the installed wheel is seen, so
+license files and checked the same way, failing when an entry's license
+cannot be read. Only the installed wheel is seen, so
 this part fails only on Windows, the platform the app ships for; elsewhere
 (macOS and Linux wheels bundle libraries the Windows one does not) it warns.
 """
@@ -150,7 +151,7 @@ def license_of(metadata: MetadataLike) -> str | None:
     return None
 
 
-_FIELD = re.compile(r"^([A-Za-z]+): (.+)$")
+_FIELD = re.compile(r"^([A-Za-z][A-Za-z-]*):(.*)$")
 
 
 def bundled_licenses(text: str) -> list[tuple[str, str]]:
@@ -158,22 +159,31 @@ def bundled_licenses(text: str) -> list[tuple[str, str]]:
 
     An entry is a block of unindented `Field: value` lines that starts with
     `Name:`; its `License:` field is taken. Any other line ends the entry, so a
-    `License:` line in free text is not attributed to a library."""
+    `License:` line in free text is not attributed to a library. An entry that
+    ends without a readable license is returned with an empty license, which
+    no policy allows: an unknown license fails rather than passes."""
     found: list[tuple[str, str]] = []
     name: str | None = None
-    for line in text.splitlines():
+    for line in [*text.splitlines(), ""]:
         field = _FIELD.match(line)
-        if field is None:
+        key, value = (field[1], field[2].strip()) if field else (None, "")
+        if name is not None and (key is None or key == "Name"):
+            found.append((name, ""))
             name = None
-        elif field[1] == "Name":
-            name = field[2].strip()
-        elif field[1] == "License" and name is not None:
-            found.append((name, field[2].strip()))
+        if key == "Name":
+            name = value
+        elif key == "License" and name is not None:
+            found.append((name, value))
             name = None
     return found
 
 
-def _license_files(dist: Distribution) -> Iterable[str]:
+def split_bundled(failures: list[str], platform: str) -> tuple[list[str], list[str]]:
+    """(failures, warnings): bundled libraries fail only on the shipped platform."""
+    return (failures, []) if platform == SHIPPED_PLATFORM else ([], failures)
+
+
+def license_texts(dist: Distribution) -> Iterable[str]:
     for path in dist.metadata.get_all("License-File") or []:
         # Core metadata 2.4 keeps license files under `licenses/`.
         text = dist.read_text(f"licenses/{path}") or dist.read_text(path)
@@ -220,9 +230,10 @@ def main() -> int:
         checked += 1
         metadata = dist.metadata
         found = overrides.get(f"pypi:{name}") or license_of(metadata)
-        if found is None or not is_allowed_expression(found, allowed, allowed_with):
+        # Exceptions are for bundled runtimes, not for a package's own license.
+        if found is None or not is_allowed_expression(found, allowed):
             failures.append(f"{name}=={dist.version}: {found!r}")
-        for text in _license_files(dist):
+        for text in license_texts(dist):
             for library, bundled in bundled_licenses(text):
                 if not is_allowed_expression(bundled, allowed, allowed_with):
                     bundled_failures.append(
@@ -230,14 +241,16 @@ def main() -> int:
                     )
         queue.extend(active_requirement_names(metadata.get_all("Requires-Dist") or []))
 
-    if sys.platform == SHIPPED_PLATFORM:
-        failures.extend(bundled_failures)
-    else:
-        for warning in bundled_failures:
-            print(f"license check warning (not {SHIPPED_PLATFORM}): {warning}", file=sys.stderr)
+    bundled_fatal, warnings = split_bundled(bundled_failures, sys.platform)
+    failures.extend(bundled_fatal)
+    for warning in warnings:
+        print(f"license check warning (not {SHIPPED_PLATFORM}): {warning}", file=sys.stderr)
     for failure in failures:
         print(f"license check failed: {failure}", file=sys.stderr)
-    print(f"pypi licenses: {checked} runtime packages checked, {len(failures)} failed")
+    print(
+        f"pypi licenses: {checked} runtime packages checked, {len(failures)} failed, "
+        f"{len(warnings)} bundled warnings"
+    )
     return 0 if not failures else 1
 
 

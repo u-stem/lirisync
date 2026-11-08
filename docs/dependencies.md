@@ -34,7 +34,7 @@
 | types-jsonschema | 4.26.0.20261006 | 開発 | Apache-2.0 | 2026-10-06 | jsonschema の型 | なし |
 | packaging | 26.3 | 開発 | Apache-2.0 OR BSD-2-Clause | 2026-08-04 | ライセンス検査で依存の環境マーカーを評価する | なし（PyPA の標準実装） |
 
-wheel に同梱されたネイティブのライブラリも、配布物に入る。パッケージの `License-Expression` はこれを含まないため、ライセンス検査はライセンスファイルの `Name:` と `License:` の欄も読む。同梱の中身は OS ごとに違うので、この部分は配布先の Windows でだけ失敗にし、ほかの OS では警告にとどめる。numpy の Windows 版は OpenBLAS（BSD-3-Clause）、その中の LAPACK（BSD-3-Clause-Open-MPI）、GCC ランタイム（GCC ランタイム例外付き）を同梱する。macOS 版と Linux 版はさらに libquadmath（LGPL-2.1-or-later）を同梱するが、配布物には入らない。
+wheel に同梱されたネイティブのライブラリも、配布物に入る。パッケージの `License-Expression` はこれを含まないため、ライセンス検査はライセンスファイルの `Name:` と `License:` の欄も読む。`License:` を読めない項目は失敗にする。GCC ランタイム例外を許すのはこの同梱分だけで、パッケージ本体のライセンスには許さない。同梱の中身は OS ごとに違うので、この部分は配布先の Windows でだけ失敗にし、ほかの OS では警告にとどめる。numpy の Windows 版は OpenBLAS（BSD-3-Clause）、その中の LAPACK（BSD-3-Clause-Open-MPI）、GCC ランタイム（GCC ランタイム例外付き）を同梱する。macOS 版と Linux 版はさらに libquadmath（LGPL-2.1-or-later）を同梱するが、配布物には入らない。
 
 pydantic が引き込む実行時の依存（pydantic-core、annotated-types、typing-extensions、typing-inspection）も、ライセンス検査の対象に入る。typing-extensions は PSF-2.0。
 
