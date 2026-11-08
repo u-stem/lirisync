@@ -151,7 +151,8 @@ def license_of(metadata: MetadataLike) -> str | None:
     return None
 
 
-_FIELD = re.compile(r"^([A-Za-z][A-Za-z-]*):(.*)$")
+# The colon must end the line or be followed by a space, so a URL line is not a field.
+_FIELD = re.compile(r"^([A-Za-z][A-Za-z-]*):(?=[ \t]|$)(.*)$")
 
 
 def bundled_licenses(text: str) -> list[tuple[str, str]]:

@@ -228,3 +228,8 @@ def test_license_files_are_read_under_licenses_first() -> None:
 def test_license_files_fall_back_to_the_dist_info_root() -> None:
     files = {"METADATA": "License-File: LICENSE.txt\n\n", "LICENSE.txt": "old layout"}
     assert _texts(files) == ["old layout"]
+
+
+def test_url_line_ends_the_entry() -> None:
+    text = "Name: libfoo\nhttps://example.org/libfoo\nLicense: GPL-3.0-only\n"
+    assert bundled_licenses(text) == [("libfoo", "")]
