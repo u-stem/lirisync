@@ -156,8 +156,14 @@ def _folded_ignored(ignored: frozenset[str]) -> frozenset[str]:
     Comparing them only before folding would miss the folded text: ら would not
     remove ラ, and a full-width A (U+FF21) would not remove the a that NFKC and
     casefold produce.
+
+    Each character is normalized on its own so that neighbours never compose
+    (か next to ゛ would become が, in an order that varies per run). A character
+    that expands to several (U+337B to 平成, ß to ss) is left out: the text is
+    expanded the same way, so it could only remove those parts everywhere.
     """
-    return frozenset(_fold(unicodedata.normalize("NFKC", "".join(ignored))))
+    folded = (_fold(unicodedata.normalize("NFKC", ch)) for ch in ignored)
+    return frozenset(f for f in folded if len(f) == 1)
 
 
 def _finish(text: str, ignored: frozenset[str]) -> str:

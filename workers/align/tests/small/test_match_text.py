@@ -172,6 +172,14 @@ def test_ignored_full_width_letter_matches_its_folded_form() -> None:
     assert surface_form("abc", frozenset({"Ａ"})) == "bc"
 
 
+def test_ignored_character_expanding_to_several_does_not_remove_them() -> None:
+    assert surface_form("平成", frozenset({"\u337b"})) == "平成"
+
+
+def test_ignored_characters_are_not_composed_with_each_other() -> None:
+    assert surface_form("がか", frozenset({"か", "\u309b"})) == "が"
+
+
 # match_forms / is_symbol_only
 
 
