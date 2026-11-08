@@ -7,6 +7,14 @@ Each requirement's environment marker is evaluated for the current platform
 (with ``extra`` empty, so extra-gated requirements are false). Requirements
 whose marker is false are skipped; every other requirement must be installed
 and have an allowed license, otherwise the check fails.
+
+Binary wheels may also bundle native libraries under licenses of their own,
+which the package's License-Expression does not cover (numpy lists OpenBLAS
+and the GCC runtime in its license file). Those entries are read from the
+license files and checked the same way, failing when an entry's license
+cannot be read. Only the installed wheel is seen, so
+this part fails only on Windows, the platform the app ships for; elsewhere
+(macOS and Linux wheels bundle libraries the Windows one does not) it warns.
 """
 
 from __future__ import annotations
@@ -15,13 +23,14 @@ import json
 import re
 import sys
 from collections.abc import Iterable
-from importlib.metadata import PackageNotFoundError, distribution
+from importlib.metadata import Distribution, PackageNotFoundError, distribution
 from pathlib import Path
 from typing import Protocol
 
 from packaging.requirements import Requirement
 
 ROOT_DISTRIBUTION = "lirisync-worker"
+SHIPPED_PLATFORM = "win32"
 POLICY_PATH = Path(__file__).resolve().parents[3] / "scripts" / "allowed-licenses.json"
 
 _SPDX_ID = re.compile(r"^[A-Za-z0-9.+-]+$")
@@ -88,15 +97,43 @@ class _Parser:
         return token in self._allowed
 
 
-def is_allowed_expression(expression: str, allowed: frozenset[str]) -> bool:
-    """True when the SPDX expression is valid and satisfiable with allowed ids only."""
+def _join_exceptions(tokens: list[str]) -> list[str] | None:
+    """Merge each `id WITH exception` into one token, or None when malformed."""
+    joined: list[str] = []
+    position = 0
+    while position < len(tokens):
+        token = tokens[position]
+        if token == "WITH":
+            return None
+        if position + 2 < len(tokens) and tokens[position + 1] == "WITH":
+            exception = tokens[position + 2]
+            if exception in {"(", ")", "AND", "OR", "WITH"} or token in {"(", ")", "AND", "OR"}:
+                return None
+            joined.append(f"{token} WITH {exception}")
+            position += 3
+            continue
+        if position + 1 < len(tokens) and tokens[position + 1] == "WITH":
+            return None
+        joined.append(token)
+        position += 1
+    return joined
+
+
+def is_allowed_expression(
+    expression: str, allowed: frozenset[str], allowed_with: frozenset[str] = frozenset()
+) -> bool:
+    """True when the SPDX expression is valid and satisfiable with allowed ids only.
+
+    A `WITH` exception is allowed only as a whole pair listed in `allowed_with`,
+    so each one is reviewed by a person before it is accepted."""
     tokens = expression.replace("(", " ( ").replace(")", " ) ").split()
-    if not tokens:
-        return False
     for token in tokens:
-        if token == "WITH" or (token not in {"(", ")"} and not _SPDX_ID.match(token)):
+        if token not in {"(", ")"} and not _SPDX_ID.match(token):
             return False
-    return _Parser(tokens, allowed).parse() is True
+    joined = _join_exceptions(tokens)
+    if not joined:
+        return False
+    return _Parser(joined, allowed | allowed_with).parse() is True
 
 
 def license_of(metadata: MetadataLike) -> str | None:
@@ -112,6 +149,47 @@ def license_of(metadata: MetadataLike) -> str | None:
         if mapped is not None:
             return mapped
     return None
+
+
+# The colon must end the line or be followed by a space, so a URL line is not a field.
+_FIELD = re.compile(r"^([A-Za-z][A-Za-z-]*):(?=[ \t]|$)(.*)$")
+
+
+def bundled_licenses(text: str) -> list[tuple[str, str]]:
+    """(name, license) for each bundled-library entry in a license file.
+
+    An entry is a block of unindented `Field: value` lines that starts with
+    `Name:`; its `License:` field is taken. Any other line ends the entry, so a
+    `License:` line in free text is not attributed to a library. An entry that
+    ends without a readable license is returned with an empty license, which
+    no policy allows: an unknown license fails rather than passes."""
+    found: list[tuple[str, str]] = []
+    name: str | None = None
+    for line in [*text.splitlines(), ""]:
+        field = _FIELD.match(line)
+        key, value = (field[1], field[2].strip()) if field else (None, "")
+        if name is not None and (key is None or key == "Name"):
+            found.append((name, ""))
+            name = None
+        if key == "Name":
+            name = value
+        elif key == "License" and name is not None:
+            found.append((name, value))
+            name = None
+    return found
+
+
+def split_bundled(failures: list[str], platform: str) -> tuple[list[str], list[str]]:
+    """(failures, warnings): bundled libraries fail only on the shipped platform."""
+    return (failures, []) if platform == SHIPPED_PLATFORM else ([], failures)
+
+
+def license_texts(dist: Distribution) -> Iterable[str]:
+    for path in dist.metadata.get_all("License-File") or []:
+        # Core metadata 2.4 keeps license files under `licenses/`.
+        text = dist.read_text(f"licenses/{path}") or dist.read_text(path)
+        if text is not None:
+            yield text
 
 
 def _normalize(name: str) -> str:
@@ -131,6 +209,7 @@ def active_requirement_names(requirements: Iterable[str]) -> list[str]:
 def main() -> int:
     policy = json.loads(POLICY_PATH.read_text(encoding="utf-8"))
     allowed = frozenset(policy["allowed"])
+    allowed_with = frozenset(policy["allowedWith"])
     overrides: dict[str, str] = policy["overrides"]
 
     root = distribution(ROOT_DISTRIBUTION)
@@ -138,6 +217,7 @@ def main() -> int:
     seen: set[str] = set()
     checked = 0
     failures: list[str] = []
+    bundled_failures: list[str] = []
     while queue:
         name = _normalize(queue.pop(0))
         if name in seen:
@@ -151,13 +231,27 @@ def main() -> int:
         checked += 1
         metadata = dist.metadata
         found = overrides.get(f"pypi:{name}") or license_of(metadata)
+        # Exceptions are for bundled runtimes, not for a package's own license.
         if found is None or not is_allowed_expression(found, allowed):
             failures.append(f"{name}=={dist.version}: {found!r}")
+        for text in license_texts(dist):
+            for library, bundled in bundled_licenses(text):
+                if not is_allowed_expression(bundled, allowed, allowed_with):
+                    bundled_failures.append(
+                        f"{name}=={dist.version} bundles {library}: {bundled!r}"
+                    )
         queue.extend(active_requirement_names(metadata.get_all("Requires-Dist") or []))
 
+    bundled_fatal, warnings = split_bundled(bundled_failures, sys.platform)
+    failures.extend(bundled_fatal)
+    for warning in warnings:
+        print(f"license check warning (not {SHIPPED_PLATFORM}): {warning}", file=sys.stderr)
     for failure in failures:
         print(f"license check failed: {failure}", file=sys.stderr)
-    print(f"pypi licenses: {checked} runtime packages checked, {len(failures)} failed")
+    print(
+        f"pypi licenses: {checked} runtime packages checked, {len(failures)} failed, "
+        f"{len(warnings)} bundled warnings"
+    )
     return 0 if not failures else 1
 
 
