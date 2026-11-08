@@ -9,11 +9,16 @@ export function parseMs(input: unknown): Ms {
   return Ms.parse(input);
 }
 
-/** Frame rate as the rational `rate / scale` (e.g. 30000/1001 for 29.97 fps). */
-export const FrameRate = z.object({
-  rate: z.number().int().positive(),
-  scale: z.number().int().positive(),
-});
+/**
+ * Frame rate as the rational `rate / scale` (e.g. 30000/1001 for 29.97 fps).
+ * Branded so that only parsed values (positive integers) reach `msToFrame`.
+ */
+export const FrameRate = z
+  .object({
+    rate: z.number().int().positive(),
+    scale: z.number().int().positive(),
+  })
+  .brand<"FrameRate">();
 export type FrameRate = z.infer<typeof FrameRate>;
 
 /** Parses an unknown value into `FrameRate`. Throws `ZodError` on invalid input. */

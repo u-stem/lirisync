@@ -7,9 +7,9 @@ import {
   parseMs,
 } from "../../src/domain/time";
 
-const FPS_30: FrameRate = { rate: 30, scale: 1 };
-const FPS_29_97: FrameRate = { rate: 30000, scale: 1001 };
-const FPS_59_94: FrameRate = { rate: 60000, scale: 1001 };
+const FPS_30: FrameRate = parseFrameRate({ rate: 30, scale: 1 });
+const FPS_29_97: FrameRate = parseFrameRate({ rate: 30000, scale: 1001 });
+const FPS_59_94: FrameRate = parseFrameRate({ rate: 60000, scale: 1001 });
 
 const HOURS_24_MS = 24 * 60 * 60 * 1000;
 
@@ -55,7 +55,7 @@ describe("parseMs", () => {
 describe("parseFrameRate", () => {
   test("accepts 30000/1001", () => {
     const input = { rate: 30000, scale: 1001 };
-    const result = parseFrameRate(input);
+    const result: { rate: number; scale: number } = parseFrameRate(input);
     expect(result).toEqual({ rate: 30000, scale: 1001 });
   });
 
@@ -95,10 +95,24 @@ describe("msToFrame", () => {
     expect(result).toBe(0);
   });
 
-  test("the exact frame boundary advances (34 ms at 30/1 is frame 1)", () => {
+  test("the first whole ms past a frame boundary advances (34 ms at 30/1 is frame 1)", () => {
     const ms = parseMs(34);
     const result = msToFrame(ms, FPS_30, 0);
     expect(result).toBe(1);
+  });
+
+  test("an exact frame boundary starts the next frame (100 ms at 30/1 is frame 3)", () => {
+    const ms = parseMs(100);
+    const result = msToFrame(ms, FPS_30, 0);
+    expect(result).toBe(3);
+  });
+
+  test("an unparsed frame rate literal is rejected by the type checker", () => {
+    const ms = parseMs(0);
+    const unparsed = { rate: 30, scale: 0 };
+    // @ts-expect-error FrameRate is branded; only parseFrameRate output is accepted.
+    const call = () => msToFrame(ms, unparsed, 0);
+    expect(call).toThrow(RangeError);
   });
 
   test("1000 ms at 30000/1001 with origin 0 is frame 29", () => {
@@ -153,7 +167,10 @@ describe("msToFrame", () => {
 
   test("throws RangeError when the frame index is not a safe integer", () => {
     const ms = parseMs(Number.MAX_SAFE_INTEGER);
-    const hugeRate: FrameRate = { rate: Number.MAX_SAFE_INTEGER, scale: 1 };
+    const hugeRate = parseFrameRate({
+      rate: Number.MAX_SAFE_INTEGER,
+      scale: 1,
+    });
     expect(() => msToFrame(ms, hugeRate, 0)).toThrow(RangeError);
   });
 });
