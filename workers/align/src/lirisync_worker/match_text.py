@@ -178,20 +178,14 @@ def surface_form(text: str, ignored: frozenset[str]) -> str:
 
 
 def reading_form(text: str, read: Reader, ignored: frozenset[str]) -> str:
-    """Read each token as kana, then fold.
+    """Read each token as kana, then fold. See `reading_chars`, which this joins.
 
     Tokens whose surface folds to nothing are skipped: the dictionary gives
     spaces and ☆ the reading キゴウ ("symbol"), and an ignored character such
     as U+3007 (ideographic zero) its reading マル, which would otherwise leak
     into the text being matched. A token without a reading keeps its surface.
     """
-    normalized = expand_iteration_marks(unicodedata.normalize("NFKC", text), kanji=False)
-    parts: list[str] = []
-    for token in read(normalized):
-        if not _finish(token.surface, ignored):
-            continue
-        parts.append(token.reading or token.surface)
-    return _finish("".join(parts), ignored)
+    return "".join(ch for ch, _ in reading_chars([text], read, ignored))
 
 
 def match_forms(text: str, read: Reader, ignored: frozenset[str]) -> MatchForms:
@@ -224,6 +218,10 @@ def reading_chars(
     out: list[tuple[str, int]] = []
     offset = 0
     for token in read(joined):
+        # Check each token in place: a reader that normalized its surfaces
+        # could keep the total length and still shift every owner silently.
+        if not joined.startswith(token.surface, offset):
+            raise ValueError("reader token surfaces do not cover the input text")
         span = owner[offset : offset + len(token.surface)]
         offset += len(token.surface)
         reading = _finish(token.reading or token.surface, ignored)

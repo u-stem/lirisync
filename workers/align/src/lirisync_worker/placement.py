@@ -17,7 +17,7 @@ milliseconds; float seconds from the ASR are converted before this module.
 """
 
 from collections.abc import Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Literal
 
 from lirisync_worker.match_text import Reader, is_symbol_only, reading_chars
@@ -92,8 +92,7 @@ def place_lines(
         results[i] = PlacedLine("anchor", words[first_word].start, words[last_word].end, ratio)
 
     for i in _ambiguous_lines(sung, readings, results):
-        line = results[i]
-        results[i] = PlacedLine(line.status, line.start, line.end, line.match_ratio, ambiguous=True)
+        results[i] = replace(results[i], ambiguous=True)
     return results
 
 

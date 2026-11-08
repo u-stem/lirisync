@@ -2,10 +2,10 @@
 
 Gotoh's affine-gap dynamic programming, with free gaps at both ends of both
 sequences: lyrics may start before the ASR picks anything up, and the ASR may
-transcribe an intro or an outro the lyrics do not have. Inside, a gap costs
-`gap_open` once plus `gap_extend` per character, so one long gap (a chorus the
-ASR missed) is cheap while scattered single-character matches are not worth
-the two gaps they need.
+transcribe an intro or an outro the lyrics do not have. Inside, a gap of L
+characters costs `gap_open + gap_extend * (L - 1)`, so one long gap (a chorus
+the ASR missed) is cheap while scattered single-character matches are not
+worth the two gaps they need.
 
 Rows are vectorized with NumPy. The horizontal gap state depends on the same
 row, which a plain vectorization cannot express; it is computed from a running
@@ -41,28 +41,34 @@ class Scoring:
 
 _NEG = -1e18
 
+# The traceback keeps 5 bytes per cell. A 10-minute song is a few thousand
+# characters a side (tens of MB); this cap (about 250 MB) stops an ASR that
+# hallucinated for minutes from exhausting memory without saying so.
+MAX_CELLS = 50_000_000
+
 type FloatRow = npt.NDArray[np.float64]
 type IntRow = npt.NDArray[np.int64]
+
+# Bits of _Pointers.flags.
+_FROM_VERTICAL = 1  # the best non-horizontal move is a gap in `second`
+_FROM_HORIZONTAL = 2  # the cell's best is a gap in `first`
+_VERTICAL_OPENED = 4  # the vertical gap opens here rather than extends
 
 
 @dataclass(frozen=True)
 class _Pointers:
     """Per-cell choices kept for the traceback."""
 
-    from_vertical: npt.NDArray[np.bool_]  # the best non-horizontal move is a gap in `second`
-    from_horizontal: npt.NDArray[np.bool_]  # the cell's best is a gap in `first`
-    vertical_opened: npt.NDArray[np.bool_]  # the vertical gap opens here rather than extends
-    horizontal_from: npt.NDArray[np.int64]  # column the horizontal gap opened from
+    flags: npt.NDArray[np.uint8]
+    horizontal_from: npt.NDArray[np.int32]  # column the horizontal gap opened from
 
     @classmethod
     def empty(cls, rows: int, columns: int) -> "_Pointers":
-        flags = (rows, columns)
-        return cls(
-            np.zeros(flags, dtype=np.bool_),
-            np.zeros(flags, dtype=np.bool_),
-            np.zeros(flags, dtype=np.bool_),
-            np.zeros(flags, dtype=np.int64),
-        )
+        shape = (rows, columns)
+        return cls(np.zeros(shape, dtype=np.uint8), np.zeros(shape, dtype=np.int32))
+
+    def has(self, i: int, j: int, bit: int) -> bool:
+        return bool(self.flags[i, j] & bit)
 
 
 def _codes(text: str, table: dict[str, int]) -> IntRow:
@@ -86,16 +92,22 @@ def _horizontal_gaps(row: FloatRow, gap_open: float, gap_extend: float) -> tuple
     return scores, opened_at[:-1]
 
 
-def align(first: str, second: str, scoring: Scoring | None = None) -> list[int | None]:
+def align(
+    first: str, second: str, scoring: Scoring | None = None, *, max_cells: int = MAX_CELLS
+) -> list[int | None]:
     """For each character of `first`, the index it aligns to in `second`.
 
     `None` marks a character left in a gap. Aligned pairs may differ (a
     substitution); callers compare the characters to count exact matches.
+
+    Raises ValueError when the table would exceed `max_cells`.
     """
     scoring = scoring or Scoring()
     n, m = len(first), len(second)
     if n == 0 or m == 0:
         return [None] * n
+    if (n + 1) * (m + 1) > max_cells:
+        raise ValueError(f"alignment too large: {n} x {m} characters exceeds {max_cells} cells")
     table: dict[str, int] = {}
     a, b = _codes(first, table), _codes(second, table)
 
@@ -116,14 +128,18 @@ def align(first: str, second: str, scoring: Scoring | None = None) -> list[int |
         )
         current = np.concatenate(([0.0], np.maximum(no_horizontal[1:], horizontal_row)))
 
-        pointers.from_vertical[i, 1:] = vertical_row > diagonal
-        pointers.from_horizontal[i, 1:] = horizontal_row > no_horizontal[1:]
-        pointers.vertical_opened[i, 1:] = open_vertical >= extend_vertical
+        pointers.flags[i, 1:] = (
+            np.where(vertical_row > diagonal, _FROM_VERTICAL, 0)
+            | np.where(horizontal_row > no_horizontal[1:], _FROM_HORIZONTAL, 0)
+            | np.where(open_vertical >= extend_vertical, _VERTICAL_OPENED, 0)
+        )
         pointers.horizontal_from[i, 1:] = opened_at
         vertical = np.concatenate(([_NEG], vertical_row))
         previous = current
 
-        # Trailing characters of `second` are free: any cell of the last row ends.
+        # Trailing characters of either sequence are free: an alignment may end
+        # in the last column (rest of `first` unaligned) or the last row (rest
+        # of `second` unaligned).
         if current[m] > best_score:
             best_score, best_cell = float(current[m]), (i, m)
         if i == n:
@@ -139,15 +155,15 @@ def _trace(n: int, cell: tuple[int, int], pointers: _Pointers) -> list[int | Non
     i, j = cell
     state = "cell"
     while i > 0 and j > 0:
-        if state == "cell" and pointers.from_horizontal[i, j]:
+        if state == "cell" and pointers.has(i, j, _FROM_HORIZONTAL):
             j = int(pointers.horizontal_from[i, j])
             state = "no_horizontal"
-        elif state in {"cell", "no_horizontal"} and not pointers.from_vertical[i, j]:
+        elif state in {"cell", "no_horizontal"} and not pointers.has(i, j, _FROM_VERTICAL):
             mapping[i - 1] = j - 1
             i, j = i - 1, j - 1
             state = "cell"
         else:  # inside a vertical gap: first[i - 1] is left unaligned
-            opened = bool(pointers.vertical_opened[i, j])
+            opened = pointers.has(i, j, _VERTICAL_OPENED)
             i -= 1
             state = "cell" if opened else "vertical"
     return mapping

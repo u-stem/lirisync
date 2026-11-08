@@ -228,3 +228,11 @@ def test_reading_chars_reject_a_reader_that_changes_the_text() -> None:
 
     with pytest.raises(ValueError, match="surfaces"):
         reading_chars(["あい"], shortening_reader, frozenset())
+
+
+def test_reading_chars_reject_a_reader_that_rewrites_surfaces() -> None:
+    def rewriting_reader(text: str) -> Iterable[Token]:
+        return [Token(surface="x" * len(text), reading="x" * len(text))]
+
+    with pytest.raises(ValueError, match="surfaces"):
+        reading_chars(["あい"], rewriting_reader, frozenset())
