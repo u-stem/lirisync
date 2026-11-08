@@ -4,7 +4,7 @@
 
 採用の基準は次の 5 つ。満たさないが検証に使いたいものは、評価用のコードに限って使う。
 
-- ライセンス：MIT、Apache-2.0、BSD など、明示された寛容なライセンスであること。GPL、非商用、未記載は不可。例外として、GCC ランタイム例外（`GPL-3.0-or-later WITH GCC-exception-3.1`）付きのランタイムは許す。この例外は、ランタイムとリンクした側に GPL の条件を課さない。Microsoft Visual C++ のランタイム（`msvcp140.dll` など）も許す。Microsoft が再配布を認めており、Windows 版の Python 本体も同種のランタイムを同梱するため、避けられない
+- ライセンス：MIT、Apache-2.0、BSD など、明示された寛容なライセンスであること。GPL、非商用、未記載は不可。例外として、GCC ランタイム例外（`GPL-3.0-or-later WITH GCC-exception-3.1`）付きのランタイムは許す。この例外は、ランタイムとリンクした側に GPL の条件を課さない。依存の wheel に同梱された Microsoft Visual C++ のランタイムのうち、`msvcp140.dll` も許す（理由は後述）
 - 保守状況：直近 12 か月以内にリリースかコミットがあること
 - 脆弱性：既知の未修正 CVE がないこと
 - 再現性：ロックファイル（`bun.lock`、`uv.lock`）で版を固定すること
@@ -35,6 +35,10 @@
 | packaging | 26.3 | 開発 | Apache-2.0 OR BSD-2-Clause | 2026-08-04 | ライセンス検査で依存の環境マーカーを評価する | なし（PyPA の標準実装） |
 
 wheel に同梱されたネイティブのライブラリも、配布物に入る。パッケージの `License-Expression` はこれを含まないため、ライセンス検査はライセンスファイルの `Name:` と `License:` の欄も読む。`License:` を読めない項目は失敗にする。GCC ランタイム例外を許すのはこの同梱分だけで、パッケージ本体のライセンスには許さない。同梱の中身は OS ごとに違うので、この部分は配布先の Windows でだけ失敗にし、ほかの OS では警告にとどめる。numpy の Windows 版は OpenBLAS（BSD-3-Clause）、その中の LAPACK（BSD-3-Clause-Open-MPI）、GCC ランタイム（GCC ランタイム例外付き）を同梱する。macOS 版と Linux 版はさらに libquadmath（LGPL-2.1-or-later）を同梱するが、配布物には入らない。Windows 版はほかに `msvcp140.dll`（Microsoft Visual C++ のランタイム）も同梱する。これはライセンスファイルに記載がないので検査では見えず、ここに記録して扱う。
+
+`msvcp140.dll` を許すのは、本プロジェクトがこの DLL を再配布しないためである。Python の依存はインストーラに入れず、初回起動時に uv が PyPI から取得する。そのため、この DLL を配るのは numpy の配布元である。Microsoft の再配布の条件（[再配布できるファイルの一覧](https://learn.microsoft.com/en-us/visualstudio/releases/2022/redistribution)と、Visual Studio のライセンス条項の「Distributable Code」）を負うのも、numpy の配布元になる。この条件には、ファイルを変更しないことや、再配布できるのは Visual Studio のライセンスを持つ者に限ることが含まれる。numpy の wheel では、DLL の名前にハッシュが付いている。Python の依存をインストーラに同梱する方式に変えるときは、本プロジェクトが条件を負うので、この判断を見直す。
+
+numpy を更新するときは、Windows 版の wheel の `numpy.libs/` を展開し、ライセンスファイルに記載のない DLL が `msvcp140` だけであることを確かめる。ほかの依存が Windows 版の wheel に DLL を同梱するようになったときも、同じように確かめる。
 
 pydantic が引き込む実行時の依存（pydantic-core、annotated-types、typing-extensions、typing-inspection）も、ライセンス検査の対象に入る。typing-extensions は PSF-2.0。
 
