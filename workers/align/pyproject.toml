@@ -1,0 +1,56 @@
+[project]
+name = "lirisync-worker"
+version = "0.1.0"
+description = "Lirisync alignment worker: speaks a line-delimited JSON protocol over stdio."
+# Lower bound: onnxruntime(-gpu) Windows wheels start at cp311, and recent av
+# (a faster-whisper dependency) requires 3.12. Upper bound: onnxruntime(-gpu)
+# Windows wheels stop at cp314 (checked on PyPI); raise it once they ship newer.
+requires-python = ">=3.12,<3.15"
+dependencies = [
+  "pydantic>=2.12,<3",
+]
+
+[project.scripts]
+lirisync-worker = "lirisync_worker.__main__:main"
+
+[dependency-groups]
+dev = [
+  "jsonschema>=4.26,<5",
+  "mypy>=2.4,<3",
+  "packaging>=26.3,<27",
+  "pytest>=9.2,<10",
+  "types-jsonschema>=4.26,<5",
+  "ruff>=0.17,<0.18",
+]
+
+[build-system]
+requires = ["uv_build>=0.13.6,<0.14"]
+build-backend = "uv_build"
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+src = ["src", "tests", "tools"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "SIM", "C4", "PT", "RUF", "N", "PL", "T20", "TID"]
+ignore = []
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["PLR2004"]
+# The worker must never write to the protocol channel via print; the one
+# test-only noise hook is the single sanctioned exception.
+"src/lirisync_worker/__main__.py" = ["T201"]
+# Command-line developer tools report on stdout/stderr.
+"tools/**" = ["T201"]
+
+[tool.mypy]
+strict = true
+plugins = ["pydantic.mypy"]
+files = ["src", "tests", "tools"]
+python_version = "3.12"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["tools"]
+addopts = "-ra --strict-markers"
