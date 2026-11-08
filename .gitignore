@@ -1,0 +1,26 @@
+# JS / TS
+node_modules/
+dist/
+out/
+.next/
+*.tsbuildinfo
+coverage/
+
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Rust
+target/
+
+# Evaluation inputs (copyrighted audio and lyrics stay local)
+eval/songs/*/audio/
+eval/songs/*/lyrics.txt
+
+# OS / editor
+.DS_Store
+Thumbs.db
