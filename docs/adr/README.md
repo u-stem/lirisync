@@ -7,5 +7,5 @@
 | ドメインは WebView の TS、OS 境界は Rust、推論は Python ワーカー | キーの秘匿、GUI と CLI の共有、インストーラの小ささを同時に満たす | Tauri の JS 実行環境、Python 不要の推論 | Node サイドカー、Rust ドメイン | [ADR 0001](0001-runtime-split.md) |
 | 時刻は整数ミリ秒で持ち、フレームへの変換は書き出し時に整数演算で行う | 浮動小数の秒では 4.1 秒 × 30 fps が 122.999… になり 1 フレームずれる | なし | 浮動小数の秒 | `packages/core/src/domain/time.ts` |
 | ワーカーは元の標準出力をプロトコル専用に複製し、fd 1 を stderr に向ける。プロトコルの行には `@@lirisync ` を付ける | 推論ライブラリが標準出力に進捗やログを書く | Windows 実機で接頭辞のない行がプロトコルに混ざったとき | 標準出力をそのまま使う | `workers/align/src/lirisync_worker/protocol.py` |
-| 配布版には寛容なライセンス（MIT、Apache-2.0、BSD、OFL など）の依存だけを入れる。wheel に同梱されたライブラリも対象で、GCC ランタイム例外付きのランタイムは許す | 無償の OSS として配布する。ランタイム例外は、リンクした側に GPL の条件を課さない | なし | GPL や非商用の依存を同梱する | [dependencies.md](../dependencies.md) |
+| 配布版には寛容なライセンス（MIT、Apache-2.0、BSD、OFL など）の依存だけを入れる。wheel に同梱されたライブラリも対象で、GCC ランタイム例外付きのランタイムと Microsoft Visual C++ のランタイムは許す | 無償の OSS として配布する。ランタイム例外は、リンクした側に GPL の条件を課さない。Visual C++ のランタイムは再配布が認められ、Windows 版の Python も同梱する | なし | GPL や非商用の依存を同梱する | [dependencies.md](../dependencies.md) |
 | 照合は 2 段。1 段目は ASR と歌詞の読みの文字単位の全体照合で位置と一致率を出し、2 段目は行の周辺だけで強制整列して時刻を詰める | ASR との一致率は歌詞と独立した証拠で失敗が見える。強制整列の誤りは 1 段目の窓に閉じ込める | 検証フェーズで 2 段目が誤差の裾を縮めないとき | 前方の貪欲な行照合、強制整列だけ、Whisper への歌詞の強制 | [ADR 0002](0002-two-stage-alignment.md) |
