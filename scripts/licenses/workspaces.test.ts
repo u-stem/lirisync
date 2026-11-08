@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -37,8 +37,17 @@ describe("parseWorkspacePattern", () => {
 });
 
 describe("expandWorkspaces", () => {
+  const created: string[] = [];
+
+  afterEach(() => {
+    for (const root of created.splice(0)) {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   function makeRepo(): string {
     const root = mkdtempSync(join(tmpdir(), "lirisync-workspaces-"));
+    created.push(root);
     mkdirSync(join(root, "packages", "core"), { recursive: true });
     writeFileSync(join(root, "packages", "core", "package.json"), "{}");
     mkdirSync(join(root, "packages", "notes"), { recursive: true });
@@ -53,24 +62,30 @@ describe("expandWorkspaces", () => {
 
   test("throws when the workspaces field is not an array of strings", () => {
     const root = makeRepo();
-    expect(() =>
-      expandWorkspaces(root, { packages: ["packages/*"] }),
-    ).toThrow();
+    expect(() => expandWorkspaces(root, { packages: ["packages/*"] })).toThrow(
+      "workspaces must be an array of strings",
+    );
   });
 
   test("throws when a plain path has no package.json", () => {
     const root = makeRepo();
-    expect(() => expandWorkspaces(root, ["packages/notes"])).toThrow();
+    expect(() => expandWorkspaces(root, ["packages/notes"])).toThrow(
+      "Workspace has no package.json",
+    );
   });
 
   test("throws when the parent of a /* pattern does not exist", () => {
     const root = makeRepo();
-    expect(() => expandWorkspaces(root, ["apps/*"])).toThrow();
+    expect(() => expandWorkspaces(root, ["apps/*"])).toThrow(
+      "Workspace directory does not exist",
+    );
   });
 
   test("throws when the patterns expand to no workspace", () => {
     const root = makeRepo();
     rmSync(join(root, "packages", "core"), { recursive: true });
-    expect(() => expandWorkspaces(root, ["packages/*"])).toThrow();
+    expect(() => expandWorkspaces(root, ["packages/*"])).toThrow(
+      "workspaces expanded to no package",
+    );
   });
 });
