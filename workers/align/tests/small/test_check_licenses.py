@@ -1,6 +1,6 @@
 from email.message import Message
 
-from check_licenses import is_allowed_expression, license_of
+from check_licenses import active_requirement_names, is_allowed_expression, license_of
 
 ALLOWED = frozenset({"MIT", "Apache-2.0", "PSF-2.0"})
 
@@ -72,3 +72,29 @@ def test_ambiguous_bsd_classifier_is_unknown() -> None:
 
 def test_missing_license_is_unknown() -> None:
     assert license_of(_metadata()) is None
+
+
+def test_plain_requirement_is_kept() -> None:
+    assert active_requirement_names(["annotated-types>=0.6.0"]) == ["annotated-types"]
+
+
+def test_requirement_with_true_marker_is_kept() -> None:
+    assert active_requirement_names(["typing-extensions; python_version >= '3'"]) == [
+        "typing-extensions"
+    ]
+
+
+def test_requirement_with_false_marker_is_skipped() -> None:
+    assert active_requirement_names(["colorama; sys_platform == 'no-such-platform'"]) == []
+
+
+def test_extra_gated_requirement_is_skipped() -> None:
+    assert active_requirement_names(["email-validator>=2; extra == 'email'"]) == []
+
+
+def test_extra_gated_requirement_is_skipped_even_with_other_true_marker() -> None:
+    assert active_requirement_names(["tzdata; python_version >= '3' and extra == 'tz'"]) == []
+
+
+def test_requirement_name_is_returned_without_specifier_or_extras() -> None:
+    assert active_requirement_names(["pydantic[email]>=2,<3"]) == ["pydantic"]

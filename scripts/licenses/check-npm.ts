@@ -1,9 +1,11 @@
-// Fails when a runtime (non-dev) npm dependency of any workspace package has a
+// Fails when a runtime (dependencies / optionalDependencies) npm package of any
+// workspace listed in the root package.json has a
 // license outside scripts/allowed-licenses.json. Dev dependencies are not
 // shipped, so they are not checked.
-import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { isAllowedExpression } from "./spdx";
+import { expandWorkspaces } from "./workspaces";
 
 const repoRoot = resolve(import.meta.dir, "..", "..");
 
@@ -52,28 +54,46 @@ function resolvePackageDir(name: string, fromDir: string): string | null {
   }
 }
 
-function workspaceDirs(): string[] {
-  const packagesDir = join(repoRoot, "packages");
-  return readdirSync(packagesDir, { withFileTypes: true })
-    .filter((entry) => entry.isDirectory())
-    .map((entry) => join(packagesDir, entry.name))
-    .filter((dir) => existsSync(join(dir, "package.json")));
+/** Runtime dependency names: dependencies plus optionalDependencies. */
+function runtimeDependencies(manifest: Record<string, unknown>): {
+  required: string[];
+  optional: string[];
+} {
+  return {
+    required: Object.keys(stringRecord(manifest.dependencies)),
+    optional: Object.keys(stringRecord(manifest.optionalDependencies)),
+  };
+}
+
+type QueueItem = { name: string; fromDir: string; optional: boolean };
+
+function enqueue(
+  queue: QueueItem[],
+  manifest: Record<string, unknown>,
+  fromDir: string,
+): void {
+  const { required, optional } = runtimeDependencies(manifest);
+  for (const name of required) queue.push({ name, fromDir, optional: false });
+  for (const name of optional) queue.push({ name, fromDir, optional: true });
 }
 
 function main(): number {
   const { allowed, overrides } = loadPolicy();
+  const rootManifest = readJson(join(repoRoot, "package.json"));
+  const patterns = Array.isArray(rootManifest.workspaces)
+    ? rootManifest.workspaces.filter(
+        (pattern): pattern is string => typeof pattern === "string",
+      )
+    : [];
+  const workspaces = expandWorkspaces(repoRoot, patterns).map((dir) => ({
+    dir,
+    manifest: readJson(join(dir, "package.json")),
+  }));
   const workspaceNames = new Set(
-    workspaceDirs().map((dir) =>
-      String(readJson(join(dir, "package.json")).name),
-    ),
+    workspaces.map(({ manifest }) => String(manifest.name)),
   );
-  const queue: { name: string; fromDir: string }[] = [];
-  for (const dir of workspaceDirs()) {
-    const manifest = readJson(join(dir, "package.json"));
-    for (const name of Object.keys(stringRecord(manifest.dependencies))) {
-      queue.push({ name, fromDir: dir });
-    }
-  }
+  const queue: QueueItem[] = [];
+  for (const { dir, manifest } of workspaces) enqueue(queue, manifest, dir);
 
   const seen = new Set<string>();
   const failures: string[] = [];
@@ -82,7 +102,10 @@ function main(): number {
     if (workspaceNames.has(item.name)) continue;
     const packageDir = resolvePackageDir(item.name, item.fromDir);
     if (packageDir === null) {
-      failures.push(`${item.name}: not installed (run bun install)`);
+      // Optional dependencies are often per-platform binaries for other OSes.
+      if (!item.optional) {
+        failures.push(`${item.name}: not installed (run bun install)`);
+      }
       continue;
     }
     if (seen.has(packageDir)) continue;
@@ -95,15 +118,13 @@ function main(): number {
     if (typeof license !== "string" || !isAllowedExpression(license, allowed)) {
       failures.push(`${label}: ${JSON.stringify(license ?? null)}`);
     }
-    for (const name of Object.keys(stringRecord(manifest.dependencies))) {
-      queue.push({ name, fromDir: packageDir });
-    }
+    enqueue(queue, manifest, packageDir);
   }
 
   for (const failure of failures)
-    console.error(`disallowed license: ${failure}`);
+    console.error(`license check failed: ${failure}`);
   console.log(
-    `npm licenses: ${checked} runtime packages checked, ${failures.length} failed`,
+    `npm licenses: ${workspaces.length} workspaces, ${checked} runtime packages checked, ${failures.length} failed`,
   );
   return failures.length === 0 ? 0 : 1;
 }

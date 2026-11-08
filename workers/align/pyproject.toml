@@ -17,6 +17,7 @@ lirisync-worker = "lirisync_worker.__main__:main"
 dev = [
   "jsonschema>=4.26,<5",
   "mypy>=2.4,<3",
+  "packaging>=26.3,<27",
   "pytest>=9.2,<10",
   "types-jsonschema>=4.26,<5",
   "ruff>=0.17,<0.18",

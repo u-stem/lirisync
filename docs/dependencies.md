@@ -8,7 +8,7 @@
 - 保守状況：直近 12 か月以内にリリースかコミットがあること
 - 脆弱性：既知の未修正 CVE がないこと
 - 再現性：ロックファイル（`bun.lock`、`uv.lock`）で版を固定すること
-- 置き換え可能性：同じ役割の代替が 1 つ以上あること
+- 置き換え可能性：実行時の依存は、同じ役割の代替が 1 つ以上あること（言語本体と型定義は除く）
 
 ## TypeScript
 
@@ -29,6 +29,7 @@
 | mypy | 2.4.1 | 開発 | MIT | 2026-10-28 | 型検査 | pyright |
 | jsonschema | 4.26.0 | 開発 | MIT | 2026-01-07 | 出力がスキーマに合うかのテスト | fastjsonschema |
 | types-jsonschema | 4.26.0.20261006 | 開発 | Apache-2.0 | 2026-10-06 | jsonschema の型 | なし |
+| packaging | 26.3 | 開発 | Apache-2.0 OR BSD-2-Clause | 2026-08-04 | ライセンス検査で依存の環境マーカーを評価する | なし（PyPA の標準実装） |
 
 pydantic が引き込む実行時の依存（pydantic-core、annotated-types、typing-extensions、typing-inspection）も、ライセンス検査の対象に入る。typing-extensions は PSF-2.0。
 

@@ -3,8 +3,10 @@
 Walks the Requires-Dist closure of the installed ``lirisync-worker``
 distribution (dev dependency groups are not part of it) and checks each
 package against ``scripts/allowed-licenses.json`` at the repository root.
-Requirements guarded by an ``extra`` marker are skipped; requirements whose
-other markers are false are skipped because they are simply not installed.
+Each requirement's environment marker is evaluated for the current platform
+(with ``extra`` empty, so extra-gated requirements are false). Requirements
+whose marker is false are skipped; every other requirement must be installed
+and have an allowed license, otherwise the check fails.
 """
 
 from __future__ import annotations
@@ -12,16 +14,17 @@ from __future__ import annotations
 import json
 import re
 import sys
+from collections.abc import Iterable
 from importlib.metadata import PackageNotFoundError, distribution
 from pathlib import Path
 from typing import Protocol
+
+from packaging.requirements import Requirement
 
 ROOT_DISTRIBUTION = "lirisync-worker"
 POLICY_PATH = Path(__file__).resolve().parents[3] / "scripts" / "allowed-licenses.json"
 
 _SPDX_ID = re.compile(r"^[A-Za-z0-9.+-]+$")
-_REQUIREMENT_NAME = re.compile(r"^\s*([A-Za-z0-9][A-Za-z0-9._-]*)")
-_EXTRA_MARKER = re.compile(r"\bextra\s*==")
 
 # Only unambiguous classifiers. "BSD License" does not say which BSD variant,
 # so it is left unknown and must be resolved with an override.
@@ -115,15 +118,13 @@ def _normalize(name: str) -> str:
     return re.sub(r"[-_.]+", "-", name).lower()
 
 
-def _runtime_requirements(metadata: MetadataLike) -> list[str]:
+def active_requirement_names(requirements: Iterable[str]) -> list[str]:
+    """Names of the requirements whose marker holds here, ignoring extras."""
     names: list[str] = []
-    for requirement in metadata.get_all("Requires-Dist") or []:
-        _, _, marker = requirement.partition(";")
-        if _EXTRA_MARKER.search(marker):
-            continue
-        match = _REQUIREMENT_NAME.match(requirement)
-        if match is not None:
-            names.append(match.group(1))
+    for line in requirements:
+        requirement = Requirement(line)
+        if requirement.marker is None or requirement.marker.evaluate({"extra": ""}):
+            names.append(requirement.name)
     return names
 
 
@@ -132,8 +133,10 @@ def main() -> int:
     allowed = frozenset(policy["allowed"])
     overrides: dict[str, str] = policy["overrides"]
 
-    queue = _runtime_requirements(distribution(ROOT_DISTRIBUTION).metadata)
+    root = distribution(ROOT_DISTRIBUTION)
+    queue = active_requirement_names(root.metadata.get_all("Requires-Dist") or [])
     seen: set[str] = set()
+    checked = 0
     failures: list[str] = []
     while queue:
         name = _normalize(queue.pop(0))
@@ -143,16 +146,18 @@ def main() -> int:
         try:
             dist = distribution(name)
         except PackageNotFoundError:
-            continue  # Environment marker was false for this platform.
+            failures.append(f"{name}: not installed")
+            continue
+        checked += 1
         metadata = dist.metadata
         found = overrides.get(f"pypi:{name}") or license_of(metadata)
         if found is None or not is_allowed_expression(found, allowed):
             failures.append(f"{name}=={dist.version}: {found!r}")
-        queue.extend(_runtime_requirements(metadata))
+        queue.extend(active_requirement_names(metadata.get_all("Requires-Dist") or []))
 
     for failure in failures:
-        print(f"disallowed license: {failure}", file=sys.stderr)
-    print(f"pypi licenses: {len(seen)} runtime packages checked, {len(failures)} failed")
+        print(f"license check failed: {failure}", file=sys.stderr)
+    print(f"pypi licenses: {checked} runtime packages checked, {len(failures)} failed")
     return 0 if not failures else 1
 
 
