@@ -48,8 +48,8 @@ def _run_worker(stdin: str, *, noise: bool = False) -> WorkerRun:
     )
 
 
-def _request(method: str, id_: str) -> str:
-    return json.dumps({"v": 1, "id": id_, "method": method, "params": {}}) + "\n"
+def _request(method: str, id_: str, params: Mapping[str, object] | None = None) -> str:
+    return json.dumps({"v": 1, "id": id_, "method": method, "params": dict(params or {})}) + "\n"
 
 
 def _validator(definition: str) -> jsonschema.Draft202012Validator:
@@ -168,3 +168,39 @@ def test_noise_hook_is_off_by_default() -> None:
     run = _run_worker(_request("shutdown", "s1"))
 
     assert "noise-print" not in run.stderr
+
+
+ANCHOR_PARAMS: dict[str, object] = {
+    "lyrics": ["風が吹く", "", "空を飛ぶ"],
+    "words": [
+        {"startMs": 1000, "endMs": 1800, "text": "風が"},
+        {"startMs": 1800, "endMs": 2500, "text": "吹く"},
+        {"startMs": 4000, "endMs": 5200, "text": "空を飛ぶ"},
+    ],
+    "ignored": [],
+}
+
+
+@pytest.fixture(scope="module")
+def anchor_session() -> WorkerRun:
+    return _run_worker(_request("anchor", "a1", ANCHOR_PARAMS) + _request("shutdown", "s1"))
+
+
+def test_anchor_params_used_by_the_tests_validate_as_anchor_params() -> None:
+    assert _is_valid("AnchorParams", ANCHOR_PARAMS)
+
+
+def test_anchor_result_validates_as_anchor_result(anchor_session: WorkerRun) -> None:
+    assert _is_valid("AnchorResult", _result_of(anchor_session.messages[0]))
+
+
+def _anchored_starts(result: Mapping[str, object]) -> list[object]:
+    lines = result["lines"]
+    if not isinstance(lines, list):
+        raise TypeError("lines is not a list")
+    return [line["startMs"] for line in lines if isinstance(line, dict)]
+
+
+def test_anchor_places_lines_with_the_real_reader(anchor_session: WorkerRun) -> None:
+    starts = _anchored_starts(_result_of(anchor_session.messages[0]))
+    assert starts == [1000, None, 4000]

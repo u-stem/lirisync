@@ -102,6 +102,57 @@
       "type": "object",
       "properties": {},
       "additionalProperties": false
+    },
+    "AnchorWord": {
+      "description": "One ASR word. Words are ordered by non-decreasing startMs (overlaps are allowed), and endMs is not before startMs. Times are integer milliseconds; ASR float seconds are converted before this boundary.",
+      "type": "object",
+      "properties": {
+        "startMs": { "type": "integer", "minimum": 0 },
+        "endMs": { "type": "integer", "minimum": 0 },
+        "text": { "type": "string" }
+      },
+      "required": ["startMs", "endMs", "text"],
+      "additionalProperties": false
+    },
+    "AnchorParams": {
+      "description": "First stage of alignment: place each lyric line on the timeline from the ASR words.",
+      "type": "object",
+      "properties": {
+        "lyrics": { "type": "array", "items": { "type": "string" } },
+        "words": { "type": "array", "items": { "$ref": "#/$defs/AnchorWord" } },
+        "ignored": {
+          "description": "Characters the user marked as not sung, one character each.",
+          "type": "array",
+          "items": { "type": "string", "minLength": 1, "maxLength": 1 },
+          "uniqueItems": true
+        }
+      },
+      "required": ["lyrics", "words", "ignored"],
+      "additionalProperties": false
+    },
+    "AnchoredLine": {
+      "type": "object",
+      "properties": {
+        "status": { "enum": ["anchor", "unmatched", "not_sung"] },
+        "startMs": { "type": ["integer", "null"], "minimum": 0 },
+        "endMs": { "type": ["integer", "null"], "minimum": 0 },
+        "matchRatio": { "type": "number", "minimum": 0, "maximum": 1 },
+        "ambiguous": { "type": "boolean" }
+      },
+      "required": ["status", "startMs", "endMs", "matchRatio", "ambiguous"],
+      "additionalProperties": false
+    },
+    "AnchorResult": {
+      "description": "One entry per lyric line, in order.",
+      "type": "object",
+      "properties": {
+        "lines": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/AnchoredLine" }
+        }
+      },
+      "required": ["lines"],
+      "additionalProperties": false
     }
   }
 }

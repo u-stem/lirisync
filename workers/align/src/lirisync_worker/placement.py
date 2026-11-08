@@ -62,8 +62,9 @@ def place_lines(
     """One result per lyric line, in order. Blank and symbol-only lines are
     `not_sung` and take no part in the alignment.
 
-    Raises ValueError when the alignment would exceed `seqalign.MAX_CELLS`
-    or the reader's tokens do not cover the text."""
+    Raises `seqalign.AlignmentTooLargeError` when the alignment would exceed
+    `seqalign.MAX_CELLS`, and ValueError when the reader's tokens do not cover
+    the text."""
     options = options or PlacementOptions()
     sung = [i for i, line in enumerate(lyrics) if not is_symbol_only(line, options.ignored)]
     # Lines are read one at a time: a line break is a real boundary, unlike the

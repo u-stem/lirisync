@@ -5,6 +5,8 @@ from collections.abc import Callable, Iterable, Iterator, Mapping
 from dataclasses import dataclass
 
 from lirisync_worker import __version__
+from lirisync_worker.anchor import make_anchor
+from lirisync_worker.match_text import Reader
 from lirisync_worker.protocol import (
     PROTOCOL_VERSION,
     Message,
@@ -63,8 +65,15 @@ def shutdown(session: Session, params: Mapping[str, object]) -> dict[str, object
     return {}
 
 
+def _sudachi_reader() -> Reader:
+    # Imported on first use: loading SudachiPy and its dictionary is the slow part.
+    from lirisync_worker.sudachi_reader import SudachiReader  # noqa: PLC0415
+
+    return SudachiReader()
+
+
 def default_registry() -> Registry:
-    return Registry({"hello": hello, "shutdown": shutdown})
+    return Registry({"hello": hello, "anchor": make_anchor(_sudachi_reader), "shutdown": shutdown})
 
 
 class Server:
