@@ -1,6 +1,11 @@
 from email.message import Message
 
-from check_licenses import active_requirement_names, is_allowed_expression, license_of
+from check_licenses import (
+    active_requirement_names,
+    bundled_licenses,
+    is_allowed_expression,
+    license_of,
+)
 
 ALLOWED = frozenset({"MIT", "Apache-2.0", "PSF-2.0"})
 
@@ -98,3 +103,64 @@ def test_extra_gated_requirement_is_skipped_even_with_other_true_marker() -> Non
 
 def test_requirement_name_is_returned_without_specifier_or_extras() -> None:
     assert active_requirement_names(["pydantic[email]>=2,<3"]) == ["pydantic"]
+
+
+GCC_RUNTIME = "GPL-3.0-or-later WITH GCC-exception-3.1"
+ONLY_GCC = frozenset({GCC_RUNTIME})
+
+
+def test_listed_with_exception_is_allowed() -> None:
+    assert is_allowed_expression(GCC_RUNTIME, ALLOWED, ONLY_GCC) is True
+
+
+def test_unlisted_with_exception_is_rejected() -> None:
+    expression = "GPL-2.0-only WITH Classpath-exception-2.0"
+    assert is_allowed_expression(expression, ALLOWED, ONLY_GCC) is False
+
+
+def test_listed_with_exception_combines_with_and() -> None:
+    assert is_allowed_expression(f"MIT AND {GCC_RUNTIME}", ALLOWED, ONLY_GCC) is True
+
+
+def test_with_without_an_exception_id_is_rejected() -> None:
+    assert is_allowed_expression("MIT WITH", ALLOWED, frozenset({"MIT WITH"})) is False
+
+
+BUNDLED_NOTICE = """\
+Copyright (c) 2005-2025, NumPy Developers.
+
+----
+
+This binary distribution of NumPy also bundles the following software:
+
+
+Name: OpenBLAS
+Files: numpy.libs\\libscipy_openblas*.dll
+Description: bundled as a dynamically linked library
+Availability: https://github.com/OpenMathLib/OpenBLAS/
+License: BSD-3-Clause
+  Copyright (c) 2011-2014, The OpenBLAS Project
+  License: this indented line belongs to the license text
+
+
+Name: GCC runtime library
+Files: numpy.libs\\libscipy_openblas*.dll
+Description: dynamically linked to files compiled with gcc
+License: GPL-3.0-or-later WITH GCC-exception-3.1
+  Libgfortran is free software; you can redistribute it and/or modify
+"""
+
+
+def test_bundled_libraries_are_read_from_name_and_license_fields() -> None:
+    assert bundled_licenses(BUNDLED_NOTICE) == [
+        ("OpenBLAS", "BSD-3-Clause"),
+        ("GCC runtime library", GCC_RUNTIME),
+    ]
+
+
+def test_license_line_outside_a_named_entry_is_ignored() -> None:
+    assert bundled_licenses("Some text\nLicense: GPL-3.0-only\n") == []
+
+
+def test_license_line_after_free_text_is_not_attributed_to_the_entry() -> None:
+    assert bundled_licenses("Name: libfoo\nsee below\nLicense: GPL-3.0-only\n") == []
