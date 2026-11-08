@@ -112,6 +112,14 @@ def test_fd1_write_noise_goes_to_stderr(noisy_session: WorkerRun) -> None:
     assert "noise-fd1" in noisy_session.stderr
 
 
+def test_child_process_noise_does_not_reach_stdout(noisy_session: WorkerRun) -> None:
+    assert "noise-child" not in "\n".join(noisy_session.stdout_lines)
+
+
+def test_child_process_noise_goes_to_stderr(noisy_session: WorkerRun) -> None:
+    assert "noise-child" in noisy_session.stderr
+
+
 def test_protocol_lines_do_not_leak_to_stderr(noisy_session: WorkerRun) -> None:
     assert PREFIX not in noisy_session.stderr
 

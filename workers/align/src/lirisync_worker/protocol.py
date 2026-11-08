@@ -1,5 +1,6 @@
 """Wire format: request parsing, message encoding, and the private protocol channel."""
 
+import ctypes
 import json
 import os
 import sys
@@ -115,15 +116,42 @@ class ProtocolChannel:
         self._stream.flush()
 
 
-def redirect_stdout() -> ProtocolChannel:
-    """Reserve the original stdout for the protocol and point fd 1 at stderr.
+_STD_OUTPUT_HANDLE = -11
 
-    After this call, ``print`` and any C-level write to fd 1 land on stderr.
+
+def _point_win32_stdout_handle_at_stderr() -> None:
+    """Make the Windows standard-output handle match the redirected fd 1.
+
+    ``os.dup2`` only rewires the C runtime's fd table. Child processes (and
+    native code) that read ``GetStdHandle(STD_OUTPUT_HANDLE)`` would otherwise
+    still be handed the original pipe, which carries the protocol.
+    """
+    if sys.platform != "win32":
+        return
+    import msvcrt  # noqa: PLC0415 - exists only on Windows
+    from ctypes import wintypes  # noqa: PLC0415 - loads cleanly only on Windows
+
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    kernel32.SetStdHandle.argtypes = [wintypes.DWORD, wintypes.HANDLE]
+    kernel32.SetStdHandle.restype = wintypes.BOOL
+    if not kernel32.SetStdHandle(_STD_OUTPUT_HANDLE, msvcrt.get_osfhandle(2)):
+        raise ctypes.WinError(ctypes.get_last_error())
+
+
+def redirect_stdout() -> ProtocolChannel:
+    """Reserve the original stdout for the protocol and point stdout at stderr.
+
+    After this call, ``print``, C-level writes to fd 1, and the stdout of child
+    processes started without an explicit ``stdout`` all land on stderr.
     Must run before importing anything that might write to stdout.
     """
     sys.stdout.flush()
-    protocol_fd = os.dup(1)  # non-inheritable, so child processes never see it
+    # os.dup returns a non-inheritable fd, so children never receive the
+    # protocol pipe through it. On POSIX they inherit fd 1 (now stderr); on
+    # Windows they inherit the std handle, which is repointed below.
+    protocol_fd = os.dup(1)
     os.dup2(2, 1)
+    _point_win32_stdout_handle_at_stderr()
     sys.stdout = sys.stderr
     stream = open(  # noqa: SIM115 - lives for the whole process
         protocol_fd, "w", encoding="utf-8", errors="backslashreplace", newline="\n"

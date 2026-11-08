@@ -2,11 +2,14 @@
 
 import io
 import json
+from pathlib import Path
+from typing import get_args
 
 import pytest
 
 from lirisync_worker.protocol import (
     PREFIX,
+    ErrorCode,
     ProtocolChannel,
     ProtocolError,
     encode_message,
@@ -14,6 +17,8 @@ from lirisync_worker.protocol import (
     parse_request,
     result_message,
 )
+
+SCHEMA_PATH = Path(__file__).resolve().parents[4] / "protocol" / "worker.schema.json"
 
 
 def _line(**overrides: object) -> str:
@@ -200,3 +205,9 @@ def test_channel_flushes_after_each_message() -> None:
     channel.send(result_message("r1", {}))
 
     assert CountingStream.flushes == 1
+
+
+def test_error_codes_match_the_schema_enum() -> None:
+    schema = json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
+
+    assert set(get_args(ErrorCode)) == set(schema["$defs"]["ErrorCode"]["enum"])

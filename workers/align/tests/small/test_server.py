@@ -6,7 +6,7 @@ from collections.abc import Mapping
 
 from lirisync_worker import __version__
 from lirisync_worker.protocol import PREFIX, ProtocolChannel, ProtocolError
-from lirisync_worker.server import Registry, Server, Session
+from lirisync_worker.server import Registry, Server, Session, hello
 
 
 def _request(method: str, params: Mapping[str, object] | None = None, id_: str = "r1") -> str:
@@ -124,10 +124,16 @@ def test_shutdown_stops_processing_later_lines() -> None:
     assert len(messages) == 1
 
 
-def test_shutdown_rejects_non_empty_params() -> None:
-    code, messages = _serve([_request("shutdown", {"x": 1}), _request("hello")])
+def test_shutdown_with_params_exits_with_zero() -> None:
+    code, _ = _serve([_request("shutdown", {"x": 1})])
 
-    assert (code, [m["type"] for m in messages]) == (0, ["error", "result"])
+    assert code == 0
+
+
+def test_loop_continues_after_shutdown_with_params() -> None:
+    _, messages = _serve([_request("shutdown", {"x": 1}), _request("hello")])
+
+    assert [m["type"] for m in messages] == ["error", "result"]
 
 
 def test_eof_exits_with_zero() -> None:
@@ -183,3 +189,58 @@ def test_registry_methods_are_listed_in_registration_order() -> None:
     registry = Registry({"b": noop, "a": noop})
 
     assert registry.methods() == ["b", "a"]
+
+
+def _nan_result(_session: Session, _params: Mapping[str, object]) -> dict[str, object]:
+    return {"x": float("nan")}
+
+
+def _unserializable_result(_session: Session, _params: Mapping[str, object]) -> dict[str, object]:
+    return {"x": object()}
+
+
+def _ok(_session: Session, _params: Mapping[str, object]) -> dict[str, object]:
+    return {}
+
+
+def test_nan_result_becomes_internal_error() -> None:
+    _, messages = _serve([_request("bad")], Server(Registry({"bad": _nan_result})))
+
+    assert messages[0]["code"] == "internal"
+
+
+def test_nan_result_error_keeps_request_id() -> None:
+    _, messages = _serve([_request("bad", id_="r9")], Server(Registry({"bad": _nan_result})))
+
+    assert messages[0]["id"] == "r9"
+
+
+def test_loop_survives_nan_result() -> None:
+    server = Server(Registry({"bad": _nan_result, "ok": _ok}))
+    _, messages = _serve([_request("bad"), _request("ok")], server)
+
+    assert [m["type"] for m in messages] == ["error", "result"]
+
+
+def test_unserializable_result_becomes_internal_error() -> None:
+    server = Server(Registry({"bad": _unserializable_result}))
+    _, messages = _serve([_request("bad")], server)
+
+    assert messages[0]["code"] == "internal"
+
+
+def test_loop_survives_unserializable_result() -> None:
+    server = Server(Registry({"bad": _unserializable_result, "ok": _ok}))
+    _, messages = _serve([_request("bad"), _request("ok")], server)
+
+    assert [m["type"] for m in messages] == ["error", "result"]
+
+
+def test_hello_lists_methods_registered_after_server_construction() -> None:
+    registry = Registry({"hello": hello})
+    server = Server(registry)
+    registry.register("late", _ok)
+
+    _, messages = _serve([_request("hello")], server)
+
+    assert _result_of(messages[0])["methods"] == ["hello", "late"]

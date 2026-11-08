@@ -2,6 +2,7 @@
 
 import io
 import os
+import subprocess
 import sys
 
 # Importing the protocol module is safe (stdlib + pydantic); anything heavier
@@ -15,10 +16,13 @@ def _emit_test_noise() -> None:
     """Test-only: write to stdout the way a noisy library would.
 
     Enabled solely by ``LIRISYNC_WORKER_TEST_NOISE=1``. It lets the test suite
-    prove that stray output ends up on stderr instead of the protocol channel.
+    prove that stray output, including a child process's, ends up on stderr
+    instead of the protocol channel.
     """
     print("noise-print")
     os.write(1, b"noise-fd1\n")
+    # No stdout argument: the child inherits whatever the process stdout is now.
+    subprocess.run([sys.executable, "-c", "print('noise-child')"], check=True)
 
 
 def main() -> int:

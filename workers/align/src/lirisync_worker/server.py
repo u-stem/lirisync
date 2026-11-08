@@ -10,21 +10,13 @@ from lirisync_worker.protocol import (
     Message,
     ProtocolChannel,
     ProtocolError,
+    encode_message,
     error_message,
     parse_request,
     result_message,
 )
 
-
-@dataclass
-class Session:
-    """State shared with handlers while the loop runs."""
-
-    methods: list[str]
-    exit_requested: bool = False
-
-
-Handler = Callable[[Session, Mapping[str, object]], dict[str, object]]
+type Handler = Callable[[Session, Mapping[str, object]], dict[str, object]]
 
 
 class Registry:
@@ -43,6 +35,14 @@ class Registry:
         return list(self._handlers)
 
 
+@dataclass
+class Session:
+    """State shared with handlers while the loop runs."""
+
+    registry: Registry
+    exit_requested: bool = False
+
+
 def _require_no_params(params: Mapping[str, object]) -> None:
     if params:
         raise ProtocolError("invalid_request", "this method takes no params")
@@ -53,7 +53,7 @@ def hello(session: Session, params: Mapping[str, object]) -> dict[str, object]:
     return {
         "protocol": PROTOCOL_VERSION,
         "worker": __version__,
-        "methods": list(session.methods),
+        "methods": session.registry.methods(),
     }
 
 
@@ -70,7 +70,7 @@ def default_registry() -> Registry:
 class Server:
     def __init__(self, registry: Registry | None = None) -> None:
         self._registry = registry if registry is not None else default_registry()
-        self._session = Session(methods=self._registry.methods())
+        self._session = Session(registry=self._registry)
 
     def handle_line(self, line: str) -> Message:
         """Turn one input line into exactly one response message."""
@@ -81,7 +81,11 @@ class Server:
             handler = self._registry.get(request.method)
             if handler is None:
                 raise ProtocolError("unknown_method", f"unknown method: {request.method}")
-            return result_message(request.id, handler(self._session, request.params))
+            message = result_message(request.id, handler(self._session, request.params))
+            # Serialization failures (NaN, non-JSON types) are handler bugs too,
+            # so surface them here rather than when the channel writes the line.
+            encode_message(message)
+            return message
         except ProtocolError as exc:
             return error_message(exc.request_id or request_id, exc.code, exc.message)
         except Exception as exc:  # the loop must never die on a handler bug
