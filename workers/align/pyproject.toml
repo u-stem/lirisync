@@ -7,6 +7,7 @@ description = "Lirisync alignment worker: speaks a line-delimited JSON protocol 
 # Windows wheels stop at cp314 (checked on PyPI); raise it once they ship newer.
 requires-python = ">=3.12,<3.15"
 dependencies = [
+  "numpy>=2.5,<3",
   "pydantic>=2.12,<3",
   "sudachidict-core>=20261015",
   "sudachipy>=0.7,<0.8",

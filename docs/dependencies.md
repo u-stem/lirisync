@@ -24,6 +24,7 @@
 | パッケージ | 版 | 区分 | ライセンス | 最終リリース | 用途 | 代替 |
 | --- | --- | --- | --- | --- | --- | --- |
 | pydantic | 2.14.3 | 実行時 | MIT | 2026-11-05 | リクエストの検証 | msgspec |
+| numpy | 2.5.4 | 実行時 | BSD-3-Clause AND 0BSD AND MIT AND Zlib AND CC0-1.0 | 2026-10-10 | 歌詞と ASR の文字列の全体照合（DP の行ごとのベクトル化） | 標準ライブラリだけの DP（1 曲で数十倍遅い） |
 | sudachipy | 0.7.0 | 実行時 | Apache-2.0 | 2026-09-24 | 照合用テキストの読み仮名化 | fugashi（MeCab）と UniDic |
 | sudachidict-core | 20261015 | 実行時 | Apache-2.0 | 2026-10-15 | SudachiPy の辞書 | sudachidict-small / sudachidict-full |
 | pytest | 9.2.0 | 開発 | MIT | 2026-10-27 | テスト | unittest |

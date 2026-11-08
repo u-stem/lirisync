@@ -8,7 +8,7 @@ different kanji or kana for the same sound (and ateji such as 運命 sung as
 """
 
 import unicodedata
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass
 from functools import cache
 
@@ -203,3 +203,33 @@ def match_forms(text: str, read: Reader, ignored: frozenset[str]) -> MatchForms:
 def is_symbol_only(text: str, ignored: frozenset[str]) -> bool:
     """True for lines such as ☆☆☆ that should pass through without timing."""
     return surface_form(text, ignored) == ""
+
+
+def reading_chars(
+    texts: Sequence[str], read: Reader, ignored: frozenset[str]
+) -> list[tuple[str, int]]:
+    """Folded reading characters of `texts` read as one, each tagged with the
+    index of the text it came from.
+
+    ASR words are short fragments: Whisper may split 運命 into 運 and 命, and
+    命 read alone is いのち. Reading the joined text keeps the dictionary's
+    context; a token that spans several texts hands out its reading in
+    proportion to the characters each text contributed.
+    """
+    normalized = [
+        expand_iteration_marks(unicodedata.normalize("NFKC", t), kanji=False) for t in texts
+    ]
+    joined = "".join(normalized)
+    owner = [index for index, text in enumerate(normalized) for _ in text]
+    out: list[tuple[str, int]] = []
+    offset = 0
+    for token in read(joined):
+        span = owner[offset : offset + len(token.surface)]
+        offset += len(token.surface)
+        reading = _finish(token.reading or token.surface, ignored)
+        if not span or not _finish(token.surface, ignored):
+            continue
+        out.extend((ch, span[k * len(span) // len(reading)]) for k, ch in enumerate(reading))
+    if offset != len(joined):
+        raise ValueError("reader token surfaces do not cover the input text")
+    return out
