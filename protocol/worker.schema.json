@@ -104,7 +104,7 @@
       "additionalProperties": false
     },
     "AnchorWord": {
-      "description": "One ASR word, in time order. Times are integer milliseconds; ASR float seconds are converted before this boundary.",
+      "description": "One ASR word. Words are ordered by non-decreasing startMs (overlaps are allowed), and endMs is not before startMs. Times are integer milliseconds; ASR float seconds are converted before this boundary.",
       "type": "object",
       "properties": {
         "startMs": { "type": "integer", "minimum": 0 },

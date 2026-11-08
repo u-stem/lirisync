@@ -108,3 +108,7 @@ def test_the_reader_is_created_once_across_calls() -> None:
     for _ in range(2):
         handler(session, _params(["か"], _words("か", 0)))
     assert len(created) == 1
+
+
+def test_a_repeated_ignored_character_is_an_invalid_request() -> None:
+    assert _code(_params([], [], ignored=["x", "x"])) == "invalid_request"

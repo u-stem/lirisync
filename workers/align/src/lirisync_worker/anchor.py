@@ -48,6 +48,12 @@ class _Params(BaseModel):
     ignored: list[Annotated[StrictStr, StringConstraints(min_length=1, max_length=1)]]
 
     @model_validator(mode="after")
+    def _ignored_are_unique(self) -> Self:
+        if len(set(self.ignored)) != len(self.ignored):
+            raise ValueError("ignored has duplicate characters")
+        return self
+
+    @model_validator(mode="after")
     def _words_in_time_order(self) -> Self:
         starts = [word.start_ms for word in self.words]
         if any(later < earlier for earlier, later in itertools.pairwise(starts)):
