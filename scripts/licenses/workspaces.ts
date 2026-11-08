@@ -23,29 +23,51 @@ export function parseWorkspacePattern(
   return children ? { kind: "children", dir } : { kind: "exact", dir };
 }
 
-/** Directories (absolute) of every workspace that has a package.json. */
+function isStringArray(value: unknown): value is string[] {
+  return (
+    Array.isArray(value) && value.every((item) => typeof item === "string")
+  );
+}
+
+/**
+ * Directories (absolute) of every workspace. Throws instead of returning a
+ * partial list: a non-array `workspaces` field (e.g. `{ packages: [...] }`), a
+ * plain path without package.json, a missing `<dir>` for `<dir>/*`, or an
+ * empty result would otherwise let the license check pass on nothing.
+ */
 export function expandWorkspaces(
   repoRoot: string,
-  patterns: readonly string[],
+  workspaces: unknown,
 ): string[] {
+  if (!isStringArray(workspaces)) {
+    throw new Error("root package.json workspaces must be an array of strings");
+  }
   const dirs: string[] = [];
-  for (const raw of patterns) {
+  for (const raw of workspaces) {
     const pattern = parseWorkspacePattern(raw);
     if (pattern === null) {
       throw new Error(`Unsupported workspace pattern: ${raw}`);
     }
     const base = join(repoRoot, pattern.dir);
-    const candidates =
-      pattern.kind === "exact"
-        ? [base]
-        : existsSync(base)
-          ? readdirSync(base, { withFileTypes: true })
-              .filter((entry) => entry.isDirectory())
-              .map((entry) => join(base, entry.name))
-          : [];
-    for (const dir of candidates) {
-      if (existsSync(join(dir, "package.json"))) dirs.push(dir);
+    if (pattern.kind === "exact") {
+      if (!existsSync(join(base, "package.json"))) {
+        throw new Error(`Workspace has no package.json: ${raw}`);
+      }
+      dirs.push(base);
+      continue;
     }
+    if (!existsSync(base)) {
+      throw new Error(`Workspace directory does not exist: ${raw}`);
+    }
+    for (const entry of readdirSync(base, { withFileTypes: true })) {
+      const dir = join(base, entry.name);
+      if (entry.isDirectory() && existsSync(join(dir, "package.json"))) {
+        dirs.push(dir);
+      }
+    }
+  }
+  if (dirs.length === 0) {
+    throw new Error("workspaces expanded to no package");
   }
   return dirs;
 }

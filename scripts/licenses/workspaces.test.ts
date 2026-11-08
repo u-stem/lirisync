@@ -1,5 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import { parseWorkspacePattern } from "./workspaces";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { expandWorkspaces, parseWorkspacePattern } from "./workspaces";
 
 describe("parseWorkspacePattern", () => {
   test("a trailing /* lists the children of a directory", () => {
@@ -30,5 +33,44 @@ describe("parseWorkspacePattern", () => {
   test("a path leaving the repository is rejected", () => {
     const result = parseWorkspacePattern("../outside/*");
     expect(result).toBeNull();
+  });
+});
+
+describe("expandWorkspaces", () => {
+  function makeRepo(): string {
+    const root = mkdtempSync(join(tmpdir(), "lirisync-workspaces-"));
+    mkdirSync(join(root, "packages", "core"), { recursive: true });
+    writeFileSync(join(root, "packages", "core", "package.json"), "{}");
+    mkdirSync(join(root, "packages", "notes"), { recursive: true });
+    return root;
+  }
+
+  test("lists children that have a package.json", () => {
+    const root = makeRepo();
+    const result = expandWorkspaces(root, ["packages/*"]);
+    expect(result).toEqual([join(root, "packages", "core")]);
+  });
+
+  test("throws when the workspaces field is not an array of strings", () => {
+    const root = makeRepo();
+    expect(() =>
+      expandWorkspaces(root, { packages: ["packages/*"] }),
+    ).toThrow();
+  });
+
+  test("throws when a plain path has no package.json", () => {
+    const root = makeRepo();
+    expect(() => expandWorkspaces(root, ["packages/notes"])).toThrow();
+  });
+
+  test("throws when the parent of a /* pattern does not exist", () => {
+    const root = makeRepo();
+    expect(() => expandWorkspaces(root, ["apps/*"])).toThrow();
+  });
+
+  test("throws when the patterns expand to no workspace", () => {
+    const root = makeRepo();
+    rmSync(join(root, "packages", "core"), { recursive: true });
+    expect(() => expandWorkspaces(root, ["packages/*"])).toThrow();
   });
 });

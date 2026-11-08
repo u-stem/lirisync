@@ -80,15 +80,12 @@ function enqueue(
 function main(): number {
   const { allowed, overrides } = loadPolicy();
   const rootManifest = readJson(join(repoRoot, "package.json"));
-  const patterns = Array.isArray(rootManifest.workspaces)
-    ? rootManifest.workspaces.filter(
-        (pattern): pattern is string => typeof pattern === "string",
-      )
-    : [];
-  const workspaces = expandWorkspaces(repoRoot, patterns).map((dir) => ({
-    dir,
-    manifest: readJson(join(dir, "package.json")),
-  }));
+  const workspaces = expandWorkspaces(repoRoot, rootManifest.workspaces).map(
+    (dir) => ({
+      dir,
+      manifest: readJson(join(dir, "package.json")),
+    }),
+  );
   const workspaceNames = new Set(
     workspaces.map(({ manifest }) => String(manifest.name)),
   );
