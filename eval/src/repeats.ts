@@ -48,7 +48,7 @@ export function confusion(runs: RepeatRun[]): Confusion {
     for (const group of groups) {
       for (const line of group) {
         const own = trueStart.get(line);
-        const guess = predictedStart.get(line);
+        const guess = predictedStart.get(line)?.start;
         if (own === undefined || guess === undefined || guess === null) {
           continue;
         }

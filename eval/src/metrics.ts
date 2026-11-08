@@ -1,8 +1,16 @@
 import type { Ms } from "@lirisync/core";
 import type { TruthLine } from "./labels";
 
-/** The aligner's answer for one lyric line. `null` means unmatched. */
-export type Prediction = { line: number; start: Ms | null };
+/**
+ * The aligner's answer for one lyric line. `start: null` means unmatched.
+ * `confidence` (0 to 1, higher is surer) is optional, but an aligner that
+ * reports it must report it for every matched line.
+ */
+export type Prediction = {
+  line: number;
+  start: Ms | null;
+  confidence?: number;
+};
 
 export type SongRun = { truth: TruthLine[]; predictions: Prediction[] };
 
@@ -35,13 +43,15 @@ function median(values: number[]): number | null {
  */
 export function predictionsByLine(
   predictions: Prediction[],
-): Map<number, Ms | null> {
-  const byLine = new Map<number, Ms | null>();
-  for (const { line, start } of predictions) {
-    if (byLine.has(line)) {
-      throw new Error(`Prediction for line ${line} is predicted twice`);
+): Map<number, Prediction> {
+  const byLine = new Map<number, Prediction>();
+  for (const prediction of predictions) {
+    if (byLine.has(prediction.line)) {
+      throw new Error(
+        `Prediction for line ${prediction.line} is predicted twice`,
+      );
     }
-    byLine.set(line, start);
+    byLine.set(prediction.line, prediction);
   }
   return byLine;
 }
@@ -58,7 +68,7 @@ export function score(runs: SongRun[]): Score {
     const startOf = predictionsByLine(predictions);
     for (const { line, start } of truth) {
       labeled += 1;
-      const predictedStart = startOf.get(line);
+      const predictedStart = startOf.get(line)?.start;
       if (predictedStart === undefined || predictedStart === null) continue;
       errors.push(Math.abs(predictedStart - start));
     }
