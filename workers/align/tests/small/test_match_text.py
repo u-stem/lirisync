@@ -67,7 +67,12 @@ def test_punctuation_and_spaces_are_stripped() -> None:
 
 
 def test_emoji_modifiers_and_joiners_are_stripped() -> None:
-    assert strip_ignored("👍🏽👨‍👩❤️1⃣", frozenset()) == "1"
+    assert (
+        strip_ignored(
+            "\U0001f44d\U0001f3fd\U0001f468\u200d\U0001f469\u2764\ufe0f1\u20e3", frozenset()
+        )
+        == "1"
+    )
 
 
 def test_long_vowel_mark_survives_stripping() -> None:
@@ -91,6 +96,14 @@ def test_small_kana_become_full_size() -> None:
 
 def test_small_tsu_is_absorbed() -> None:
     assert fold_kana("きって") == "きて"
+
+
+def test_small_katakana_extensions_become_hiragana() -> None:
+    assert fold_kana("ㇰㇱㇺ") == "くしむ"
+
+
+def test_combining_handakuten_is_composed() -> None:
+    assert fold_kana("ㇷ\u309a") == "ぷ"
 
 
 def test_long_vowel_mark_is_dropped() -> None:
@@ -143,6 +156,20 @@ def test_reading_form_leaves_kanji_iteration_marks_to_the_reader() -> None:
 def test_reading_form_expands_kana_iteration_marks_before_reading() -> None:
     reader = FakeReader({"こころ": "ココロ"})
     assert reading_form("こゝろ", reader, frozenset()) == "こころ"
+
+
+def test_ignored_hiragana_also_drops_katakana_after_folding() -> None:
+    reader = FakeReader({"ラララ": "ラララ"})
+    assert reading_form("ラララ", reader, frozenset({"ら"})) == ""
+
+
+def test_ignored_character_drops_the_reading_of_its_token() -> None:
+    reader = FakeReader({"〇": "マル"})
+    assert reading_form("あ〇", reader, frozenset({"〇"})) == "あ"
+
+
+def test_ignored_full_width_letter_matches_its_folded_form() -> None:
+    assert surface_form("abc", frozenset({"Ａ"})) == "bc"
 
 
 # match_forms / is_symbol_only

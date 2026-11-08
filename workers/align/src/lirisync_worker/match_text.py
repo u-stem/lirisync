@@ -10,6 +10,7 @@ different kanji or kana for the same sound (and ateji such as 運命 sung as
 import unicodedata
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
+from functools import cache
 
 
 @dataclass(frozen=True)
@@ -29,8 +30,8 @@ class MatchForms:
 
 _KANJI_MARK = "々"
 _KANA_MARKS = {"ゝ": False, "ゞ": True, "ヽ": False, "ヾ": True}  # mark -> voiced
-_DAKUTEN = "゙"
-_HANDAKUTEN = "゚"
+_DAKUTEN = "\u3099"  # combining voiced sound mark, not the spacing U+309B
+_HANDAKUTEN = "\u309a"  # combining semi-voiced sound mark
 
 # Unicode general categories dropped before matching: punctuation, symbols
 # (☆ ♪ ♡ and most emoji), separators, control/format (ZWJ), enclosing marks
@@ -108,6 +109,24 @@ _SMALL_KANA = str.maketrans(
         "ゖ": "け",
         "っ": None,
         "ー": None,
+        # Small katakana extensions (U+31F0..U+31FF) sit outside the katakana
+        # block shifted above, so map them to full-size hiragana directly.
+        "ㇰ": "く",
+        "ㇱ": "し",
+        "ㇲ": "す",
+        "ㇳ": "と",
+        "ㇴ": "ぬ",
+        "ㇵ": "は",
+        "ㇶ": "ひ",
+        "ㇷ": "ふ",
+        "ㇸ": "へ",
+        "ㇹ": "ほ",
+        "ㇺ": "む",
+        "ㇻ": "ら",
+        "ㇼ": "り",
+        "ㇽ": "る",
+        "ㇾ": "れ",
+        "ㇿ": "ろ",
     }
 )
 
@@ -122,11 +141,28 @@ def fold_kana(text: str) -> str:
         chr(ord(ch) - _KATAKANA_TO_HIRAGANA) if _KATAKANA_START <= ord(ch) <= _KATAKANA_END else ch
         for ch in text
     )
-    return hiragana.translate(_SMALL_KANA)
+    # NFC composes a mark left behind by the mapping (ㇷ + U+309A -> ぷ).
+    return unicodedata.normalize("NFC", hiragana.translate(_SMALL_KANA))
+
+
+def _fold(text: str) -> str:
+    return fold_kana(strip_ignored(text.casefold(), frozenset()))
+
+
+@cache
+def _folded_ignored(ignored: frozenset[str]) -> frozenset[str]:
+    """The user's extra characters, normalized the same way as the text.
+
+    Comparing them only before folding would miss the folded text: ら would not
+    remove ラ, and a full-width A (U+FF21) would not remove the a that NFKC and
+    casefold produce.
+    """
+    return frozenset(_fold(unicodedata.normalize("NFKC", "".join(ignored))))
 
 
 def _finish(text: str, ignored: frozenset[str]) -> str:
-    return fold_kana(strip_ignored(text.casefold(), ignored))
+    drop = _folded_ignored(ignored)
+    return "".join(ch for ch in _fold(text) if ch not in drop)
 
 
 def surface_form(text: str, ignored: frozenset[str]) -> str:
@@ -138,14 +174,15 @@ def surface_form(text: str, ignored: frozenset[str]) -> str:
 def reading_form(text: str, read: Reader, ignored: frozenset[str]) -> str:
     """Read each token as kana, then fold.
 
-    Tokens whose surface is only symbols are skipped: the dictionary gives
-    spaces and ☆ the reading キゴウ ("symbol"), which would otherwise leak into
-    the text being matched. A token without a reading keeps its surface.
+    Tokens whose surface folds to nothing are skipped: the dictionary gives
+    spaces and ☆ the reading キゴウ ("symbol"), and an ignored character such
+    as U+3007 (ideographic zero) its reading マル, which would otherwise leak
+    into the text being matched. A token without a reading keeps its surface.
     """
     normalized = expand_iteration_marks(unicodedata.normalize("NFKC", text), kanji=False)
     parts: list[str] = []
     for token in read(normalized):
-        if not strip_ignored(token.surface, ignored):
+        if not _finish(token.surface, ignored):
             continue
         parts.append(token.reading or token.surface)
     return _finish("".join(parts), ignored)
