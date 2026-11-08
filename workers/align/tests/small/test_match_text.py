@@ -1,11 +1,14 @@
 from collections.abc import Iterable
 
+import pytest
+
 from lirisync_worker.match_text import (
     Token,
     expand_iteration_marks,
     fold_kana,
     is_symbol_only,
     match_forms,
+    reading_chars,
     reading_form,
     strip_ignored,
     surface_form,
@@ -198,3 +201,38 @@ def test_a_line_with_kana_is_not_symbol_only() -> None:
 
 def test_a_line_of_only_long_vowel_marks_is_symbol_only() -> None:
     assert is_symbol_only("ーー", frozenset()) is True
+
+
+# reading_chars
+
+
+def test_reading_chars_tag_each_kana_with_its_source_text() -> None:
+    reader = FakeReader({})
+    assert reading_chars(["あい", "う"], reader, frozenset()) == [("あ", 0), ("い", 0), ("う", 1)]
+
+
+def test_reading_chars_read_across_text_boundaries() -> None:
+    reader = FakeReader({"運命": "ウンメイ"})
+    result = reading_chars(["運", "命"], reader, frozenset())
+    assert result == [("う", 0), ("ん", 0), ("め", 1), ("い", 1)]
+
+
+def test_reading_chars_skip_symbol_tokens() -> None:
+    reader = FakeReader({"☆": "キゴウ"})
+    assert reading_chars(["あ", "☆"], reader, frozenset()) == [("あ", 0)]
+
+
+def test_reading_chars_reject_a_reader_that_changes_the_text() -> None:
+    def shortening_reader(text: str) -> Iterable[Token]:
+        return [Token(surface=text[:-1], reading=text[:-1])]
+
+    with pytest.raises(ValueError, match="surfaces"):
+        reading_chars(["あい"], shortening_reader, frozenset())
+
+
+def test_reading_chars_reject_a_reader_that_rewrites_surfaces() -> None:
+    def rewriting_reader(text: str) -> Iterable[Token]:
+        return [Token(surface="x" * len(text), reading="x" * len(text))]
+
+    with pytest.raises(ValueError, match="surfaces"):
+        reading_chars(["あい"], rewriting_reader, frozenset())
