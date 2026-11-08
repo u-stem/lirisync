@@ -1,19 +1,22 @@
 """Anchor known lyric lines onto ASR segments by forward fuzzy matching.
 
-The procedure follows lyric-align (MIT, https://github.com/ijuinryukichi/lyric-align):
-group lines into units of `pairing` lines, scan at most `window` segments
-ahead of the cursor for the most similar one, accept it above a script-aware
-threshold, and split a multi-line unit at the breaths between its words. Its
-author measured the obvious alternatives (a globally optimal monotone
-assignment, a timing prior, candidates spanning two segments, variable unit
-sizes) and each was worse on repeated choruses, so they are not here.
-The copyright notice for the ported code is in THIRD_PARTY_NOTICES.md.
+Lines are grouped into units of `pairing` lines. Each unit takes the most
+similar segment among the next `window` segments after the last one taken,
+if it clears a script-aware threshold; a multi-line unit is then split at the
+breaths between its words. Matching only moves forward, so repeated choruses
+take their repetitions in order.
+
+The approach comes from lyric-align's published measurements, which found the
+obvious alternatives worse on repeated choruses: a globally optimal monotone
+assignment, a timing prior, candidates spanning two segments, and unit sizes
+chosen per step. None of them is used here.
 
 A line that cannot be placed stays unmatched: no time is invented for it.
 All times are integer milliseconds; float seconds from the ASR are converted
 before they reach this module.
 """
 
+import itertools
 import unicodedata
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
@@ -81,8 +84,8 @@ def default_threshold(surfaces: Sequence[str]) -> float:
 
     Chance similarity depends on the size of the character inventory: two
     unrelated English lines share enough letters to score about 0.3, while a
-    true Japanese match against sung ASR can drop to about 0.26 (lyric-align's
-    measurements). One floor cannot serve both.
+    true Japanese match against sung ASR can drop to about 0.26 (measured by
+    lyric-align). One floor cannot serve both.
     """
     chars = "".join(surfaces)
     if not chars:
@@ -104,36 +107,45 @@ def auto_pairing(*, lines: int, segments: int) -> int:
     return max(1, min(MAX_PAIRING, round(lines / segments)))
 
 
+def _silence_before(words: Sequence[Word], index: int) -> int:
+    return words[index].start - words[index - 1].end
+
+
+def _choose_cut(words: Sequence[Word], aim: int, earliest: int, latest: int) -> int:
+    """The boundary in [earliest, latest] near `aim` with the longest silence.
+
+    Only boundaries within `_BREATH_SEARCH` words of `aim` are considered, so a
+    long pause elsewhere in the segment (an interlude) cannot pull the cut away
+    from where the character counts put it. Ties go to the earlier boundary.
+    """
+    near = range(max(earliest, aim - _BREATH_SEARCH), min(latest, aim + _BREATH_SEARCH) + 1)
+    if not near:
+        return max(earliest, min(aim, latest))
+    return max(near, key=lambda index: (_silence_before(words, index), -index))
+
+
 def split_by_breath(words: Sequence[Word], weights: Sequence[int]) -> list[list[Word]]:
     """Partition `words` into one group per line, cutting at breaths.
 
-    Each cut aims at the word index implied by the cumulative share of
-    `weights` (character counts), then takes the largest silence within three
-    words of it. Groups may be empty when there are fewer words than lines.
+    `weights` are the lines' character counts; each cut aims at the word index
+    their running share implies and then moves to the longest silence close by.
+    Groups may be empty when there are fewer words than lines.
     """
-    n = len(words)
     if not weights:
         return []
-    if len(weights) == 1 or n <= 1:
-        return [list(words)] + [[] for _ in weights[1:]]
+    if len(weights) == 1 or len(words) <= 1:
+        return [list(words), *([] for _ in weights[1:])]
     total = sum(weights) or 1
-    groups: list[list[Word]] = []
-    start = 0
-    cumulative = 0
-    for index, weight in enumerate(weights[:-1]):
-        cumulative += weight
-        remaining = len(weights) - index - 1
-        target = round(n * cumulative / total)
-        low = max(start + 1, target - _BREATH_SEARCH)
-        high = min(n - remaining, target + _BREATH_SEARCH + 1)
-        if high <= low:
-            cut = min(max(low, start + 1), n - remaining)
-        else:
-            cut = max(range(low, high), key=lambda i: (words[i].start - words[i - 1].end, -i))
-        groups.append(list(words[start:cut]))
-        start = cut
-    groups.append(list(words[start:]))
-    return groups
+    bounds = [0]
+    share = 0
+    for line, weight in enumerate(weights[:-1], start=1):
+        share += weight
+        aim = round(len(words) * share / total)
+        # Leave at least one word for each line after this cut.
+        latest = len(words) - (len(weights) - line)
+        bounds.append(max(bounds[-1], _choose_cut(words, aim, bounds[-1] + 1, latest)))
+    bounds.append(len(words))
+    return [list(words[a:b]) for a, b in itertools.pairwise(bounds)]
 
 
 def _join(forms: Sequence[MatchForms]) -> MatchForms:
@@ -141,6 +153,22 @@ def _join(forms: Sequence[MatchForms]) -> MatchForms:
         surface="".join(f.surface for f in forms),
         reading="".join(f.reading for f in forms),
     )
+
+
+def _best_segment(
+    unit: MatchForms, heard: Sequence[MatchForms], cursor: int, window: int
+) -> tuple[int | None, float]:
+    """Index and score of the most similar segment in the look-ahead window.
+
+    The earliest segment wins a tie, so a repeated line takes the nearer
+    repetition and leaves the later one for the next occurrence.
+    """
+    candidates = range(cursor, min(cursor + window, len(heard)))
+    scored = [(similarity(unit, heard[index]), -index) for index in candidates]
+    if not scored:
+        return None, 0.0
+    score, negative_index = max(scored)
+    return (-negative_index, score) if score > 0 else (None, score)
 
 
 def _place_unit(
@@ -192,7 +220,6 @@ def anchor_lines(
     if pairing is None:
         pairing = auto_pairing(lines=len(sung), segments=len(segments))
     pairing = max(1, pairing)
-    window = options.window
 
     results: dict[int, AnchoredLine] = {
         i: AnchoredLine("not_sung", None, None, 0.0) for i in range(len(lyrics)) if i not in forms
@@ -200,15 +227,12 @@ def anchor_lines(
     cursor = 0
     for first in range(0, len(sung), pairing):
         unit = sung[first : first + pairing]
-        unit_forms = _join([forms[i] for i in unit])
-        best_score, best_index = 0.0, None
-        for index in range(cursor, min(cursor + window, len(segments))):
-            score = similarity(unit_forms, heard[index])
-            if score > best_score:
-                best_score, best_index = score, index
-        if best_index is None or best_score <= threshold:
-            results.update({i: AnchoredLine("unmatched", None, None, best_score) for i in unit})
+        index, score = _best_segment(_join([forms[i] for i in unit]), heard, cursor, options.window)
+        if index is None or score <= threshold:
+            # Unmatched: no time is invented, and the cursor stays put so the
+            # next unit can still take the segment this one missed.
+            results.update({i: AnchoredLine("unmatched", None, None, score) for i in unit})
             continue
-        cursor = best_index + 1
-        results.update(_place_unit(unit, forms, segments[best_index], best_score))
+        cursor = index + 1
+        results.update(_place_unit(unit, forms, segments[index], score))
     return [results[i] for i in range(len(lyrics))]

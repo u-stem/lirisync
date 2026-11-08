@@ -40,7 +40,7 @@ pydantic が引き込む実行時の依存（pydantic-core、annotated-types、t
 
 辞書を更新すると読みが変わり、コードを変えなくても照合の結果が変わりうる。版は `uv.lock` で固定し、上限は付けない（版が日付で、上限の値を決める根拠がないため）。sudachidict-core を更新するときは、同じ変更で Medium テスト（`tests/medium/test_sudachi_reader.py`）を通し、eval の結果を直近の値と比べる。
 
-照合の手順は lyric-align（MIT）から移した。依存ではなくコードの移植なので、著作権表示はルートの `THIRD_PARTY_NOTICES.md` に載せる。類似度は lyric-align の difflib から RapidFuzz の Indel 類似度に替えた。どちらも `2 × 共通部分の長さ ÷ 両方の長さの和` で、lyric-align が difflib で測ったしきい値をそのまま初期値に使える。
+照合の手順は lyric-align の公開された実測を参考に、自前で実装した（コードは移していない）。類似度は lyric-align の difflib に替えて RapidFuzz の Indel 類似度を使う。どちらも `2 × 共通部分の長さ ÷ 両方の長さの和` で、lyric-align が difflib で測ったしきい値をそのまま初期値に使える。
 
 sudachipy は型スタブ（`sudachipy.pyi`）を同梱するが `py.typed` がないため、mypy の設定でこのスタブを読ませている。
 
