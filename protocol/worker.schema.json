@@ -1,0 +1,107 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:lirisync:protocol:worker",
+  "title": "Lirisync worker protocol",
+  "description": "One JSON object per line. Every protocol line on the worker's stdout is prefixed with '@@lirisync '. Lines without the prefix are logs.",
+  "$defs": {
+    "ProtocolVersion": {
+      "const": 1
+    },
+    "RequestId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "Request": {
+      "type": "object",
+      "properties": {
+        "v": { "$ref": "#/$defs/ProtocolVersion" },
+        "id": { "$ref": "#/$defs/RequestId" },
+        "method": { "type": "string", "minLength": 1 },
+        "params": { "type": "object" }
+      },
+      "required": ["v", "id", "method", "params"],
+      "additionalProperties": false
+    },
+    "Progress": {
+      "type": "object",
+      "properties": {
+        "id": { "$ref": "#/$defs/RequestId" },
+        "type": { "const": "progress" },
+        "stage": { "type": "string", "minLength": 1 },
+        "ratio": { "type": "number", "minimum": 0, "maximum": 1 },
+        "etaMs": { "type": ["integer", "null"], "minimum": 0 }
+      },
+      "required": ["id", "type", "stage", "ratio", "etaMs"],
+      "additionalProperties": false
+    },
+    "Result": {
+      "type": "object",
+      "properties": {
+        "id": { "$ref": "#/$defs/RequestId" },
+        "type": { "const": "result" },
+        "result": { "type": "object" }
+      },
+      "required": ["id", "type", "result"],
+      "additionalProperties": false
+    },
+    "ErrorCode": {
+      "enum": [
+        "invalid_request",
+        "unknown_method",
+        "unsupported_version",
+        "internal",
+        "gpu_unavailable",
+        "model_missing",
+        "asr_degenerate",
+        "cancelled"
+      ]
+    },
+    "Error": {
+      "type": "object",
+      "properties": {
+        "id": { "type": ["string", "null"] },
+        "type": { "const": "error" },
+        "code": { "$ref": "#/$defs/ErrorCode" },
+        "message": { "type": "string" }
+      },
+      "required": ["id", "type", "code", "message"],
+      "additionalProperties": false
+    },
+    "Response": {
+      "oneOf": [
+        { "$ref": "#/$defs/Progress" },
+        { "$ref": "#/$defs/Result" },
+        { "$ref": "#/$defs/Error" }
+      ]
+    },
+    "HelloParams": {
+      "type": "object",
+      "properties": {},
+      "additionalProperties": false
+    },
+    "HelloResult": {
+      "type": "object",
+      "properties": {
+        "protocol": { "$ref": "#/$defs/ProtocolVersion" },
+        "worker": { "type": "string", "minLength": 1 },
+        "methods": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "uniqueItems": true
+        }
+      },
+      "required": ["protocol", "worker", "methods"],
+      "additionalProperties": false
+    },
+    "ShutdownParams": {
+      "type": "object",
+      "properties": {},
+      "additionalProperties": false
+    },
+    "ShutdownResult": {
+      "type": "object",
+      "properties": {},
+      "additionalProperties": false
+    }
+  }
+}
