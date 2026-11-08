@@ -55,6 +55,14 @@ def _usable_id(value: object) -> str | None:
     return value if isinstance(value, str) and value else None
 
 
+def describe_validation_error(exc: ValidationError) -> str:
+    """Locations and reasons only; input values are never echoed."""
+    return "; ".join(
+        f"{'.'.join(str(part) for part in err['loc']) or '<root>'}: {err['msg']}"
+        for err in exc.errors(include_input=False, include_url=False)
+    )
+
+
 def parse_request(line: str) -> Request:
     """Parse one stdin line into a ``Request``.
 
@@ -81,11 +89,7 @@ def parse_request(line: str) -> Request:
     try:
         return Request.model_validate(raw)
     except ValidationError as exc:
-        # Report only locations and reasons; never echo input values.
-        problems = "; ".join(
-            f"{'.'.join(str(part) for part in err['loc']) or '<root>'}: {err['msg']}"
-            for err in exc.errors(include_input=False, include_url=False)
-        )
+        problems = describe_validation_error(exc)
         raise ProtocolError(
             "invalid_request", f"request does not match the schema ({problems})", request_id
         ) from None

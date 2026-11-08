@@ -4,7 +4,7 @@ import random
 
 import pytest
 
-from lirisync_worker.seqalign import Scoring, align
+from lirisync_worker.seqalign import AlignmentTooLargeError, Scoring, align
 
 
 def test_identical_sequences_align_one_to_one() -> None:
@@ -96,5 +96,5 @@ def test_alignment_scores_match_the_reference_on_random_inputs() -> None:
 
 
 def test_an_oversized_alignment_is_refused() -> None:
-    with pytest.raises(ValueError, match="too large"):
+    with pytest.raises(AlignmentTooLargeError):
         align("あ" * 10, "い" * 10, _SCORING, max_cells=50)

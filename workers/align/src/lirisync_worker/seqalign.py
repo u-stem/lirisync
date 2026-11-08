@@ -46,6 +46,11 @@ _NEG = -1e18
 # hallucinated for minutes from exhausting memory without saying so.
 MAX_CELLS = 50_000_000
 
+
+class AlignmentTooLargeError(ValueError):
+    """The input is too long to align within `max_cells`."""
+
+
 type FloatRow = npt.NDArray[np.float64]
 type IntRow = npt.NDArray[np.int64]
 
@@ -100,14 +105,16 @@ def align(
     `None` marks a character left in a gap. Aligned pairs may differ (a
     substitution); callers compare the characters to count exact matches.
 
-    Raises ValueError when the table would exceed `max_cells`.
+    Raises AlignmentTooLargeError when the table would exceed `max_cells`.
     """
     scoring = scoring or Scoring()
     n, m = len(first), len(second)
     if n == 0 or m == 0:
         return [None] * n
     if (n + 1) * (m + 1) > max_cells:
-        raise ValueError(f"alignment too large: {n} x {m} characters exceeds {max_cells} cells")
+        raise AlignmentTooLargeError(
+            f"alignment too large: {n} x {m} characters exceeds {max_cells} cells"
+        )
     table: dict[str, int] = {}
     a, b = _codes(first, table), _codes(second, table)
 
