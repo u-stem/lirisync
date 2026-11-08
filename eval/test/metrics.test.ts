@@ -98,6 +98,14 @@ describe("score", () => {
     expect(result.medianStartErrorMs).toBe(700);
   });
 
+  test("two predictions for the same line are an error", () => {
+    const run = {
+      truth: [truth(1, 1000)],
+      predictions: [predicted(1, 1000), predicted(1, 5000)],
+    };
+    expect(() => score([run])).toThrow("line 1 is predicted twice");
+  });
+
   test("an evaluation set without labeled lines is an error", () => {
     const run = { truth: [], predictions: [predicted(1, 1000)] };
     expect(() => score([run])).toThrow("no labeled lines");

@@ -38,7 +38,8 @@ export function parseAudacityLabels(text: string): TruthLine[] {
       start = parseSecondsText(startText);
       end = parseSecondsText(endText);
     } catch (error) {
-      throw new Error(`${where}: ${String(error)}`);
+      const reason = error instanceof Error ? error.message : String(error);
+      throw new Error(`${where}: ${reason}`);
     }
     if (end < start) {
       throw new Error(`${where}: end before start`);
@@ -53,4 +54,24 @@ export function parseAudacityLabels(text: string): TruthLine[] {
     byLine.set(line, { line, start });
   });
   return [...byLine.values()].sort((a, b) => a.line - b.line);
+}
+
+/**
+ * Checks that every label points at a non-blank line of `lyrics.txt`. A label
+ * on a missing or blank line can never be predicted, so it would silently
+ * lower the match rate instead of failing.
+ */
+export function assertLabelsSung(labels: TruthLine[], lyrics: string): void {
+  const lines = lyrics.split(/\r?\n/);
+  for (const { line } of labels) {
+    const text = lines[line - 1];
+    if (text === undefined) {
+      throw new Error(
+        `Label for line ${line} is past the end of lyrics.txt (${lines.length} lines)`,
+      );
+    }
+    if (text.trim() === "") {
+      throw new Error(`Label for line ${line} is blank in lyrics.txt`);
+    }
+  }
 }

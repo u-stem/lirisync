@@ -29,6 +29,24 @@ function median(values: number[]): number | null {
 }
 
 /**
+ * Indexes predictions by line number. Throws on a duplicate line: keeping the
+ * last one would hide an aligner bug inside the metrics, and labels are held
+ * to the same rule.
+ */
+export function predictionsByLine(
+  predictions: Prediction[],
+): Map<number, Ms | null> {
+  const byLine = new Map<number, Ms | null>();
+  for (const { line, start } of predictions) {
+    if (byLine.has(line)) {
+      throw new Error(`Prediction for line ${line} is predicted twice`);
+    }
+    byLine.set(line, start);
+  }
+  return byLine;
+}
+
+/**
  * Scores the labeled lines of every song together. Lines are pooled before
  * the median so that a short song does not weigh as much as a long one.
  * Predictions for lines without a label are ignored.
@@ -37,7 +55,7 @@ export function score(runs: SongRun[]): Score {
   let labeled = 0;
   const errors: number[] = [];
   for (const { truth, predictions } of runs) {
-    const startOf = new Map(predictions.map((p) => [p.line, p.start]));
+    const startOf = predictionsByLine(predictions);
     for (const { line, start } of truth) {
       labeled += 1;
       const predictedStart = startOf.get(line);

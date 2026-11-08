@@ -96,6 +96,15 @@ describe("confusion", () => {
     expect(result.considered).toBe(0);
   });
 
+  test("two predictions for the same line are an error", () => {
+    const run = {
+      truth: labels,
+      predictions: [predicted(3, 30000), predicted(3, 10000)],
+      groups,
+    };
+    expect(() => confusion([run])).toThrow("line 3 is predicted twice");
+  });
+
   test("the rate pools songs", () => {
     const confusedSong = {
       truth: labels,

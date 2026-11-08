@@ -1,5 +1,5 @@
 import type { TruthLine } from "./labels";
-import type { Prediction } from "./metrics";
+import { type Prediction, predictionsByLine } from "./metrics";
 
 /**
  * Line numbers (1-based) of lyric lines whose text appears more than once,
@@ -44,7 +44,7 @@ export function confusion(runs: RepeatRun[]): Confusion {
   let confused = 0;
   for (const { truth, predictions, groups } of runs) {
     const trueStart = new Map(truth.map((t) => [t.line, t.start]));
-    const predictedStart = new Map(predictions.map((p) => [p.line, p.start]));
+    const predictedStart = predictionsByLine(predictions);
     for (const group of groups) {
       for (const line of group) {
         const own = trueStart.get(line);

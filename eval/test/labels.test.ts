@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { parseMs } from "@lirisync/core";
-import { parseAudacityLabels } from "../src/labels";
+import { assertLabelsSung, parseAudacityLabels } from "../src/labels";
 
 describe("parseAudacityLabels", () => {
   test("reads a region label as the line's start time", () => {
@@ -43,6 +43,11 @@ describe("parseAudacityLabels", () => {
     expect(() => parseAudacityLabels(text)).toThrow("line number");
   });
 
+  test("names the row without an Error prefix", () => {
+    const text = "1.0\t1.0\t1\n1,0\t1.0\t2\n";
+    expect(() => parseAudacityLabels(text)).toThrow(/^row 2: Expected/);
+  });
+
   test("rejects a spectral selection row", () => {
     const text = "1.0\t2.0\t1\n\\\t100.0\t2000.0\n";
     expect(() => parseAudacityLabels(text)).toThrow("row 2");
@@ -56,5 +61,26 @@ describe("parseAudacityLabels", () => {
   test("rejects the same line labeled twice", () => {
     const text = "1.0\t1.0\t1\n5.0\t5.0\t1\n";
     expect(() => parseAudacityLabels(text)).toThrow("labeled twice");
+  });
+});
+
+describe("assertLabelsSung", () => {
+  const lyrics = "first\n\nthird\n";
+
+  test("accepts labels on non-blank lyric lines", () => {
+    const labels = parseAudacityLabels("1.0\t1.0\t1\n3.0\t3.0\t3\n");
+    expect(() => assertLabelsSung(labels, lyrics)).not.toThrow();
+  });
+
+  test("rejects a label on a blank line", () => {
+    const labels = parseAudacityLabels("2.0\t2.0\t2\n");
+    expect(() => assertLabelsSung(labels, lyrics)).toThrow("line 2 is blank");
+  });
+
+  test("rejects a label past the last lyric line", () => {
+    const labels = parseAudacityLabels("9.0\t9.0\t9\n");
+    expect(() => assertLabelsSung(labels, lyrics)).toThrow(
+      "line 9 is past the end",
+    );
   });
 });
