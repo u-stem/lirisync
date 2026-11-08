@@ -20,6 +20,7 @@
 | `packages/core` | ドメインとユースケース（TypeScript の純関数）。時刻は整数ミリ秒で持ちます |
 | `workers/align` | 推論を受け持つ Python ワーカー。stdio で 1 行 1 JSON を話します |
 | `protocol/worker.schema.json` | ワーカーとのメッセージ形式の正本 |
+| `eval/` | 整列の精度を測る評価セットと指標。使い方は [eval/README.md](eval/README.md) |
 | `scripts/` | 開発用のスクリプト（依存のライセンス検査など） |
 | `docs/` | 決定記録（`docs/adr/`）と依存の一覧 |
 
