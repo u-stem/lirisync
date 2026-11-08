@@ -8,6 +8,8 @@ description = "Lirisync alignment worker: speaks a line-delimited JSON protocol 
 requires-python = ">=3.12,<3.15"
 dependencies = [
   "pydantic>=2.12,<3",
+  "sudachidict-core>=20261015",
+  "sudachipy>=0.7,<0.8",
 ]
 
 [project.scripts]
@@ -43,12 +45,22 @@ ignore = []
 "src/lirisync_worker/__main__.py" = ["T201"]
 # Command-line developer tools report on stdout/stderr.
 "tools/**" = ["T201"]
+# Normalization tests feed full-width and look-alike characters on purpose.
+"tests/small/test_match_text.py" = ["RUF001"]
 
 [tool.mypy]
 strict = true
 plugins = ["pydantic.mypy"]
 files = ["src", "tests", "tools"]
 python_version = "3.12"
+
+# sudachipy ships sudachipy.pyi but no py.typed marker; read its stub instead
+# of treating the module as Any. Its __init__ re-exports the stub's names with
+# plain `from .sudachipy import ...`, which strict mode does not count as export.
+[[tool.mypy.overrides]]
+module = ["sudachipy", "sudachipy.*"]
+follow_untyped_imports = true
+implicit_reexport = true
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
