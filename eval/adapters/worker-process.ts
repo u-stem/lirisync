@@ -13,27 +13,27 @@ export type RunningWorker = {
 };
 
 export type StartWorkerOptions = {
-  /** How long `stop` waits for the answer to shutdown before killing. */
+  /**
+   * How long `stop` waits for the answer to shutdown, and then for the exit,
+   * before killing the worker.
+   */
   shutdownTimeoutMs?: number;
 };
 
 const DEFAULT_SHUTDOWN_TIMEOUT_MS = 10_000;
 
-/** Resolves true when the worker answers shutdown in time, false otherwise. */
-async function askToShutDown(
-  client: WorkerClient,
+/** Resolves with what `promise` settles to, or `late` after `timeoutMs`. */
+async function within<T>(
+  promise: Promise<T>,
   timeoutMs: number,
-): Promise<boolean> {
+  late: T,
+): Promise<T> {
   let timer: ReturnType<typeof setTimeout> | undefined;
-  const late = new Promise<false>((resolve) => {
-    timer = setTimeout(() => resolve(false), timeoutMs);
+  const deadline = new Promise<T>((resolve) => {
+    timer = setTimeout(() => resolve(late), timeoutMs);
   });
-  const answered = client.request("shutdown", {}).then(
-    () => true,
-    () => false,
-  );
   try {
-    return await Promise.race([answered, late]);
+    return await Promise.race([promise, deadline]);
   } finally {
     clearTimeout(timer);
   }
@@ -70,11 +70,23 @@ export async function startWorker(
     client,
     hello,
     async stop() {
-      const answered = await askToShutDown(client, timeoutMs);
+      const shutdown = client.request("shutdown", {}).then(
+        () => true,
+        () => false,
+      );
+      const answered = await within(shutdown, timeoutMs, false);
       // Ending the input of a worker that already exited can fail; the exit
       // code below is what reports that.
       await client.close().catch(() => {});
-      if (!answered) child.kill();
+      // A worker can answer and still not exit, e.g. on a leftover thread.
+      const exited = answered
+        ? await within(
+            child.exited.then(() => true),
+            timeoutMs,
+            false,
+          )
+        : false;
+      if (!exited) child.kill();
       return child.exited;
     },
   };

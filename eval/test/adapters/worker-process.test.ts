@@ -36,4 +36,11 @@ describe("startWorker", () => {
     });
     expect(await worker.stop()).not.toBe(0);
   });
+
+  test("stop kills a worker that answers shutdown but does not exit", async () => {
+    const worker = await startWorker(fake("lingering"), [], {
+      shutdownTimeoutMs: 100,
+    });
+    expect(await worker.stop()).not.toBe(0);
+  });
 });
