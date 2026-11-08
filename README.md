@@ -50,4 +50,4 @@ uv --directory workers/align run python tools/check_licenses.py
 
 ## ライセンス
 
-[MIT](LICENSE)
+[MIT](LICENSE)。ほかのソフトウェアから移したコードの著作権表示は [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) にあります。

@@ -8,6 +8,7 @@ description = "Lirisync alignment worker: speaks a line-delimited JSON protocol 
 requires-python = ">=3.12,<3.15"
 dependencies = [
   "pydantic>=2.12,<3",
+  "rapidfuzz>=3.14,<4",
   "sudachidict-core>=20261015",
   "sudachipy>=0.7,<0.8",
 ]

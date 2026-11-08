@@ -25,6 +25,7 @@
 | --- | --- | --- | --- | --- | --- | --- |
 | pydantic | 2.14.3 | 実行時 | MIT | 2026-11-05 | リクエストの検証 | msgspec |
 | sudachipy | 0.7.0 | 実行時 | Apache-2.0 | 2026-09-24 | 照合用テキストの読み仮名化 | fugashi（MeCab）と UniDic |
+| rapidfuzz | 3.14.6 | 実行時 | MIT | 2026-08-30 | 歌詞行と ASR セグメントの文字類似度 | 標準ライブラリの difflib |
 | sudachidict-core | 20261015 | 実行時 | Apache-2.0 | 2026-10-15 | SudachiPy の辞書 | sudachidict-small / sudachidict-full |
 | pytest | 9.2.0 | 開発 | MIT | 2026-10-27 | テスト | unittest |
 | ruff | 0.17.4 | 開発 | MIT | 2026-11-05 | lint と整形 | flake8 と black |
@@ -38,6 +39,8 @@ pydantic が引き込む実行時の依存（pydantic-core、annotated-types、t
 読み仮名化に pykakasi を使わないのは、GPL-3.0 で配布物に同梱できないためである。sudachidict-core は全体が Apache-2.0 だが、一部（`small_lex.csv` の一部と `matrix.def`）は UniDic 由来で BSD-3-Clause の著作権表示を伴う（SudachiDict の `LEGAL`）。配布版のライセンス表記には、この表示も載せる。
 
 辞書を更新すると読みが変わり、コードを変えなくても照合の結果が変わりうる。版は `uv.lock` で固定し、上限は付けない（版が日付で、上限の値を決める根拠がないため）。sudachidict-core を更新するときは、同じ変更で Medium テスト（`tests/medium/test_sudachi_reader.py`）を通し、eval の結果を直近の値と比べる。
+
+照合の手順は lyric-align（MIT）から移した。依存ではなくコードの移植なので、著作権表示はルートの `THIRD_PARTY_NOTICES.md` に載せる。類似度は lyric-align の difflib から RapidFuzz の Indel 類似度に替えた。どちらも `2 × 共通部分の長さ ÷ 両方の長さの和` で、lyric-align が difflib で測ったしきい値をそのまま初期値に使える。
 
 sudachipy は型スタブ（`sudachipy.pyi`）を同梱するが `py.typed` がないため、mypy の設定でこのスタブを読ませている。
 
