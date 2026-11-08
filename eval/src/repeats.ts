@@ -44,11 +44,11 @@ export function confusion(runs: RepeatRun[]): Confusion {
   let confused = 0;
   for (const { truth, predictions, groups } of runs) {
     const trueStart = new Map(truth.map((t) => [t.line, t.start]));
-    const predictedStart = predictionsByLine(predictions);
+    const byLine = predictionsByLine(predictions);
     for (const group of groups) {
       for (const line of group) {
         const own = trueStart.get(line);
-        const guess = predictedStart.get(line)?.start;
+        const guess = byLine.get(line)?.start;
         if (own === undefined || guess === undefined || guess === null) {
           continue;
         }

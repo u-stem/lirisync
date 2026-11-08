@@ -32,6 +32,8 @@ export type ErrorProfile = {
 };
 
 type MatchedLine = {
+  /** 1-based position of the song in `runs`, for error messages. */
+  song: number;
   line: number;
   errorMs: number;
   confidence: number | undefined;
@@ -41,30 +43,37 @@ type ScoredLine = { errorMs: number; confidence: number };
 
 function matchedLines(runs: SongRun[]): MatchedLine[] {
   const matched: MatchedLine[] = [];
-  for (const { truth, predictions } of runs) {
+  runs.forEach(({ truth, predictions }, index) => {
     const byLine = predictionsByLine(predictions);
     for (const { line, start } of truth) {
       const prediction = byLine.get(line);
       if (prediction === undefined || prediction.start === null) continue;
       matched.push({
+        song: index + 1,
         line,
         errorMs: Math.abs(prediction.start - start),
         confidence: prediction.confidence,
       });
     }
-  }
+  });
   return matched;
 }
 
 /**
  * The matched lines with their confidence, or null when the aligner reports
- * none. Reporting it for only some lines is an aligner bug, not a weak score.
+ * none. Reporting it for only some lines, or outside 0 to 1, is an aligner
+ * bug, not a weak score.
  */
 function withConfidence(lines: MatchedLine[]): ScoredLine[] | null {
   if (lines.every((line) => line.confidence === undefined)) return null;
-  return lines.map(({ line, errorMs, confidence }) => {
+  return lines.map(({ song, line, errorMs, confidence }) => {
+    const where = `Prediction for song ${song}, line ${line}`;
     if (confidence === undefined) {
-      throw new Error(`Prediction for line ${line} has no confidence`);
+      throw new Error(`${where} has no confidence`);
+    }
+    // Written as a positive range test so that NaN fails it too.
+    if (!(confidence >= 0 && confidence <= 1)) {
+      throw new Error(`${where} has confidence ${confidence} outside 0 to 1`);
     }
     return { errorMs, confidence };
   });

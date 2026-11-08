@@ -103,9 +103,22 @@ describe("errorProfile", () => {
     expect(result.confidenceAuroc).toBeNull();
   });
 
-  test("confidence metrics are null for an aligner that reports no confidence", () => {
+  test("AUROC is null for an aligner that reports no confidence", () => {
     const result = errorProfile([runWithErrors([0, 2000])]);
     expect(result.confidenceAuroc).toBeNull();
+  });
+
+  test("the silent error rate is null for an aligner that reports no confidence", () => {
+    const result = errorProfile([runWithErrors([0, 2000])]);
+    expect(result.silentErrorRate).toBeNull();
+  });
+
+  test("lines are pooled across songs, not averaged per song", () => {
+    const result = errorProfile([
+      runWithErrors([2000]),
+      runWithErrors([0, 0, 0]),
+    ]);
+    expect(result.grossErrorRate).toBe(0.25);
   });
 
   test("a matched line without a confidence among lines with one is an error", () => {
@@ -113,6 +126,16 @@ describe("errorProfile", () => {
       truth: [truth(1, 1000), truth(2, 2000)],
       predictions: [predicted(1, 1000, 0.9), predicted(2, 2000)],
     };
-    expect(() => errorProfile([run])).toThrow("line 2 has no confidence");
+    expect(() => errorProfile([runWithErrors([0], [0.9]), run])).toThrow(
+      "song 2, line 2 has no confidence",
+    );
   });
+
+  test.each([-0.1, 1.1, Number.NaN])(
+    "a confidence of %p is an error",
+    (confidence) => {
+      const run = runWithErrors([0], [confidence]);
+      expect(() => errorProfile([run])).toThrow("outside 0 to 1");
+    },
+  );
 });

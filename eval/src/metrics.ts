@@ -65,10 +65,10 @@ export function score(runs: SongRun[]): Score {
   let labeled = 0;
   const errors: number[] = [];
   for (const { truth, predictions } of runs) {
-    const startOf = predictionsByLine(predictions);
+    const byLine = predictionsByLine(predictions);
     for (const { line, start } of truth) {
       labeled += 1;
-      const predictedStart = startOf.get(line)?.start;
+      const predictedStart = byLine.get(line)?.start;
       if (predictedStart === undefined || predictedStart === null) continue;
       errors.push(Math.abs(predictedStart - start));
     }
