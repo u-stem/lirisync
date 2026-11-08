@@ -63,6 +63,8 @@ export function parseAudacityLabels(text: string): TruthLine[] {
  */
 export function assertLabelsSung(labels: TruthLine[], lyrics: string): void {
   const lines = lyrics.split(/\r?\n/);
+  // A final newline ends the last line; it does not start an empty one.
+  if (lines.at(-1) === "") lines.pop();
   for (const { line } of labels) {
     const text = lines[line - 1];
     if (text === undefined) {

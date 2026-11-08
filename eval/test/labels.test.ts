@@ -77,6 +77,13 @@ describe("assertLabelsSung", () => {
     expect(() => assertLabelsSung(labels, lyrics)).toThrow("line 2 is blank");
   });
 
+  test("a trailing newline does not add a line", () => {
+    const labels = parseAudacityLabels("4.0\t4.0\t4\n");
+    expect(() => assertLabelsSung(labels, lyrics)).toThrow(
+      "line 4 is past the end of lyrics.txt (3 lines)",
+    );
+  });
+
   test("rejects a label past the last lyric line", () => {
     const labels = parseAudacityLabels("9.0\t9.0\t9\n");
     expect(() => assertLabelsSung(labels, lyrics)).toThrow(
