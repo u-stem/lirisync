@@ -4,9 +4,40 @@ import type { HelloResult } from "./worker-protocol";
 export type RunningWorker = {
   client: WorkerClient;
   hello: HelloResult;
-  /** Asks the worker to shut down and resolves with its exit code. */
+  /**
+   * Asks the worker to shut down and resolves with its exit code. A worker
+   * that fails or does not answer in time is killed, so this never throws
+   * and the exit code is the only sign of trouble.
+   */
   stop(): Promise<number>;
 };
+
+export type StartWorkerOptions = {
+  /** How long `stop` waits for the answer to shutdown before killing. */
+  shutdownTimeoutMs?: number;
+};
+
+const DEFAULT_SHUTDOWN_TIMEOUT_MS = 10_000;
+
+/** Resolves true when the worker answers shutdown in time, false otherwise. */
+async function askToShutDown(
+  client: WorkerClient,
+  timeoutMs: number,
+): Promise<boolean> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const late = new Promise<false>((resolve) => {
+    timer = setTimeout(() => resolve(false), timeoutMs);
+  });
+  const answered = client.request("shutdown", {}).then(
+    () => true,
+    () => false,
+  );
+  try {
+    return await Promise.race([answered, late]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
 
 /**
  * Starts the worker as a child process and checks that it offers `required`.
@@ -16,7 +47,9 @@ export type RunningWorker = {
 export async function startWorker(
   command: readonly string[],
   required: readonly string[],
+  options: StartWorkerOptions = {},
 ): Promise<RunningWorker> {
+  const timeoutMs = options.shutdownTimeoutMs ?? DEFAULT_SHUTDOWN_TIMEOUT_MS;
   const child = Bun.spawn([...command], {
     stdin: "pipe",
     stdout: "pipe",
@@ -37,8 +70,11 @@ export async function startWorker(
     client,
     hello,
     async stop() {
-      await client.request("shutdown", {});
-      await client.close();
+      const answered = await askToShutDown(client, timeoutMs);
+      // Ending the input of a worker that already exited can fail; the exit
+      // code below is what reports that.
+      await client.close().catch(() => {});
+      if (!answered) child.kill();
       return child.exited;
     },
   };

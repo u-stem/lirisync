@@ -94,8 +94,13 @@ export class WorkerClient {
       this.#pending.set(id, { resolve, reject });
     });
     const request = { v: PROTOCOL_VERSION, id, method, params };
-    this.#stdin.write(`${JSON.stringify(request)}\n`);
-    this.#stdin.flush();
+    try {
+      this.#stdin.write(`${JSON.stringify(request)}\n`);
+      this.#stdin.flush();
+    } catch (error) {
+      this.#pending.delete(id);
+      return Promise.reject(error);
+    }
     return answer;
   }
 
@@ -121,7 +126,14 @@ export class WorkerClient {
       return;
     }
     const message = this.#parse(line.slice(PROTOCOL_PREFIX.length));
-    if (message.type === "progress") return;
+    if (message.type === "progress") {
+      if (!this.#pending.has(message.id)) {
+        throw new WorkerProtocolError(
+          `A progress message names unknown id ${message.id}`,
+        );
+      }
+      return;
+    }
     if (message.type === "error" && message.id === null) {
       // Only an unreadable request yields an error without an id. This client
       // writes every request itself, so that is a bug on either side.

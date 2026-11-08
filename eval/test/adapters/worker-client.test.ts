@@ -148,6 +148,33 @@ describe("WorkerClient", () => {
     await expect(outcome).rejects.toMatchObject({ code: "invalid_request" });
   });
 
+  test("rejects instead of throwing when the request cannot be written", async () => {
+    const stdin = {
+      write(): never {
+        throw new Error("broken pipe");
+      },
+      flush() {},
+      end() {},
+    };
+    const client = new WorkerClient({ stdin, stdout: new ReadableStream() });
+    await expect(client.request("hello", {})).rejects.toThrow("broken pipe");
+  });
+
+  test("rejects a progress message for an id that was not asked", async () => {
+    const worker = fakeWorker(() => [
+      protocolLine({
+        id: "99",
+        type: "progress",
+        stage: "asr",
+        ratio: 0,
+        etaMs: null,
+      }),
+    ]);
+    const client = new WorkerClient(worker.io);
+    const outcome = client.request("hello", {});
+    await expect(outcome).rejects.toBeInstanceOf(WorkerProtocolError);
+  });
+
   test("rejects pending requests on an error without an id", async () => {
     const worker = fakeWorker(() => [
       protocolLine({ id: null, type: "error", code: "internal", message: "" }),
