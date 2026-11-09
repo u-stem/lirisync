@@ -27,6 +27,9 @@
 | numpy | 2.5.4 | 実行時 | BSD-3-Clause AND 0BSD AND MIT AND Zlib AND CC0-1.0 | 2026-10-10 | 歌詞と ASR の文字列の全体照合（DP の行ごとのベクトル化） | 標準ライブラリだけの DP（1 曲で数十倍遅い） |
 | sudachipy | 0.7.0 | 実行時 | Apache-2.0 | 2026-09-24 | 照合用テキストの読み仮名化 | fugashi（MeCab）と UniDic |
 | sudachidict-core | 20261015 | 実行時 | Apache-2.0 | 2026-10-15 | SudachiPy の辞書 | sudachidict-small / sudachidict-full |
+| onnxruntime | 1.31.1 | 実行時 | MIT | 2026-10-26 | ボーカル分離の ONNX の実行 | OpenVINO Runtime（Apache-2.0、2026.4.1、2026-10-01 に PyPI で確認。ONNX を読める）/ onnxruntime-gpu・onnxruntime-directml（GPU、未決定） |
+| flatbuffers | 25.12.19 | 実行時 | Apache-2.0 | 2025-12-19 | onnxruntime が引き込む（ONNX の読み込み） | なし（onnxruntime の必須依存） |
+| protobuf | 7.36.2 | 実行時 | BSD-3-Clause | 2026-09-17 | onnxruntime が引き込む（ONNX の読み込み） | なし（onnxruntime の必須依存） |
 | pytest | 9.2.0 | 開発 | MIT | 2026-10-27 | テスト | unittest |
 | ruff | 0.17.4 | 開発 | MIT | 2026-11-05 | lint と整形 | flake8 と black |
 | mypy | 2.4.1 | 開発 | MIT | 2026-10-28 | 型検査 | pyright |
@@ -38,13 +41,27 @@ wheel に同梱されたネイティブのライブラリも、配布物に入�
 
 pydantic が引き込む実行時の依存（pydantic-core、annotated-types、typing-extensions、typing-inspection）も、ライセンス検査の対象に入る。typing-extensions は PSF-2.0。
 
+onnxruntime は numpy、packaging、flatbuffers、protobuf を引き込む（`uv.lock` のとおり）。protobuf の PyPI のメタデータには `License-Expression` がなく、`License` の欄も `3-Clause BSD License` という名前だけで SPDX 識別子ではないため、ライセンス検査は読み取れず失敗にする。同梱の `LICENSE` ファイルは BSD-3-Clause の本文なので、`scripts/allowed-licenses.json` の `overrides` に `pypi:protobuf==7.36.2` として BSD-3-Clause を記録した。キーに版を含めてあるので、protobuf を上げると検査が失敗する。`LICENSE` を読み直して、問題がなければキーの版を更新する（`tools/check_licenses.py` は `pypi:<名前>==<版>` を、版のない `pypi:<名前>` より先に見る）。
+
+onnxruntime がネイティブに取り込むライブラリは、ライセンス検査の対象外である。wheel の METADATA に `License-File` がなく、検査が読む同梱ライセンスの欄がないためで、wheel の `onnxruntime/ThirdPartyNotices.txt` に一覧がある。たとえば Eigen は MPL-2.0、Intel MKL は Intel Simplified Software License である。配布前にこの一覧を読んで確かめる必要があり、配布版のライセンス表記には、このファイルを含める。これが済むまで、配布の許可とは見なさない。
+
+onnxruntime は `py.typed` を同梱しないため、mypy の設定でソースを読ませている（sudachipy と同じ扱い）。GPU 用の onnxruntime-gpu・onnxruntime-directml は同じ `onnxruntime` の名前空間に入る別の配布物で、同時には入れられない。どれを配布版にするかは決めておらず、ここにはまだ入れていない。
+
 読み仮名化に pykakasi を使わないのは、GPL-3.0 で配布物に同梱できないためである。sudachidict-core は全体が Apache-2.0 だが、一部（`small_lex.csv` の一部と `matrix.def`）は UniDic 由来で BSD-3-Clause の著作権表示を伴う（SudachiDict の `LEGAL`）。配布版のライセンス表記には、この表示も載せる。
 
 辞書を更新すると読みが変わり、コードを変えなくても照合の結果が変わりうる。版は `uv.lock` で固定し、上限は付けない（版が日付で、上限の値を決める根拠がないため）。sudachidict-core を更新するときは、同じ変更で Medium テスト（`tests/medium/test_sudachi_reader.py`）を通し、eval の結果を直近の値と比べる。
 
 sudachipy は型スタブ（`sudachipy.pyi`）を同梱するが `py.typed` がないため、mypy の設定でこのスタブを読ませている。
 
-確認日はすべて 2026-11-08。四半期ごとに保守状況を見直す。
+確認日は 2026-11-08（onnxruntime、flatbuffers、protobuf と OpenVINO は 2026-11-10）。四半期ごとに保守状況を見直す。
+
+### モデル
+
+依存ではないが、分離モデルの出所をここに記録する。
+
+- 取得元：Hugging Face の `redbaty/ytm-vocal-separator`、版は `d9d3f27d58c4f9c0286a07ed541b18ceaa91f107` に固定
+- ライセンス：モデルカードに MIT と書かれている。元の重みが MIT であることは、上流の Hugging Face のタグだけを根拠にしており、こちらでは確かめていない。配布するときは、元の重みの出所とライセンスを確かめ直す
+- モデルのファイル（`sep-all-int8.onnx` など）は、テストのために `tools/fetch_separator_model.py` が固定した版と SHA-256 で取得する。リポジトリにも配布物にも入れない
 
 ## Python（eval/transcribe、評価専用）
 

@@ -16,5 +16,7 @@
     "Zlib"
   ],
   "allowedWith": ["GPL-3.0-or-later WITH GCC-exception-3.1"],
-  "overrides": {}
+  "overrides": {
+    "pypi:protobuf==7.36.2": "BSD-3-Clause"
+  }
 }

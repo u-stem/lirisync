@@ -45,6 +45,10 @@ uv --directory workers/align run mypy
 uv --directory workers/align run pytest
 uv --directory workers/align run python tools/check_licenses.py
 
+# ボーカル分離モデルの参照テスト（任意。モデルはリポジトリに含めない）
+uv --directory workers/align run python tools/fetch_separator_model.py --dest ~/lirisync-separator
+LIRISYNC_SEPARATOR_DIR=~/lirisync-separator uv --directory workers/align run pytest tests/medium/test_separator_reference.py
+
 # 評価用の書き起こしツール（配布しない）
 uv --directory eval/transcribe sync
 uv --directory eval/transcribe run ruff check
@@ -52,6 +56,10 @@ uv --directory eval/transcribe run ruff format --check
 uv --directory eval/transcribe run mypy
 uv --directory eval/transcribe run pytest
 ```
+
+ボーカル分離の参照テストは手動で動かします。モデル（約 240 MB の int8 版）と参照出力はリポジトリに含めないため、環境変数 `LIRISYNC_SEPARATOR_DIR` が未設定かファイルが足りないと skip され、CI では動きません。`workers/align/src/lirisync_worker/separation/` を変えたら、上の 2 行（取得とテスト）で動かしてください。Windows でも動かし、SNR を PR に記録します（ファイルには残しません）。取得するファイルは固定した版と SHA-256 で検査します。`--fp16` を付けると GPU 用の fp16 版（約 460 MB）と参照出力も取得しますが、取得するだけで、fp16 を使う参照テストはまだありません。
+
+int8 のモデルは、モデルカードによると AVX512-VNNI と AVX-VNNI を持つ CPU で正確で、VNNI のない古い x86 では飽和することがあります（上流では測っていません）。このテストの 47.5 dB は Apple silicon で測った値です。しきい値の 40 dB は目標ではなく下限で、移植が正しい場合と、レイアウトや STFT の誤り（ほぼ 0 dB になる）を分けるために置いています。
 
 配布版に入れる依存は、MIT・Apache-2.0・BSD などの寛容なライセンスに限ります。許可するライセンスは `scripts/allowed-licenses.json` にあり、CI で検査します。
 
