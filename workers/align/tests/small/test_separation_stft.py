@@ -128,6 +128,13 @@ def test_model_layout_round_trips() -> None:
     np.testing.assert_array_equal(from_model_output(to_model_input(spec)), spec)
 
 
+def test_stft_rejects_a_one_dimensional_signal() -> None:
+    signal = np.zeros(CHUNK, dtype=np.float32)
+
+    with pytest.raises(ValueError, match="channels, samples"):
+        stft(signal)
+
+
 def test_model_input_rejects_a_mono_spectrogram() -> None:
     mono = np.zeros((1, BINS, FRAMES), dtype=np.complex64)
 

@@ -15,6 +15,11 @@ from lirisync_worker.separation.stft import CHUNK
 
 Audio = npt.NDArray[np.float32]
 
+STEREO = 2
+# Below two chunks per position, adjacent faded windows do not overlap and the
+# seams would come out as 0.
+MIN_OVERLAP = 2
+
 
 def fade_length(chunk: int) -> int:
     """Fade length at each end of a chunk window: a tenth of the chunk."""
@@ -44,8 +49,11 @@ def demix(
     last chunk has no fade-out. Inputs longer than twice the border
     (`chunk - chunk // overlap`) are reflect-padded by the border first and the
     padding is removed at the end. Samples no window covers come out as 0.
-    Raises `ValueError` if `process` does not return an ndarray of shape `[2, chunk]`.
+    Raises `ValueError` if `audio` is not `[2, n]`, if `overlap` is below 2
+    (without overlap the faded seams would come out as 0) or leaves no step,
+    and if `process` does not return an ndarray of shape `[2, chunk]`.
     """
+    _check_arguments(audio, chunk, overlap)
     step = chunk // overlap
     border = chunk - step
     fade = fade_length(chunk)
@@ -84,7 +92,7 @@ def demix(
         returned = process(part)
         if not isinstance(returned, np.ndarray):
             raise ValueError(f"process must return an ndarray, got {type(returned).__name__}")
-        if returned.shape != (2, chunk):
+        if returned.shape != (STEREO, chunk):
             raise ValueError(f"process must return shape (2, {chunk}), got {returned.shape}")
         out = returned.astype(np.float32, copy=False)
         end = start + part_len
@@ -98,3 +106,10 @@ def demix(
     if length > 2 * border and border > 0:
         blended = blended[:, border:-border]
     return blended
+
+
+def _check_arguments(audio: Audio, chunk: int, overlap: int) -> None:
+    if audio.ndim != STEREO or audio.shape[0] != STEREO:
+        raise ValueError(f"audio must have shape (2, samples), got {audio.shape}")
+    if overlap < MIN_OVERLAP or chunk // overlap < 1:
+        raise ValueError(f"need 2 <= overlap <= chunk, got overlap={overlap}, chunk={chunk}")

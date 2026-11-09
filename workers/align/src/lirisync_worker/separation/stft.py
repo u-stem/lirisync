@@ -40,6 +40,8 @@ def stft(x: npt.NDArray[np.floating]) -> Spec:
     or fewer are rejected, as in torch, whose reflect padding cannot cover them.
     """
     signal = np.asarray(x, dtype=np.float32)
+    if signal.ndim != 2:  # noqa: PLR2004 - [channels, samples]
+        raise ValueError(f"expected [channels, samples], got shape {signal.shape}")
     if signal.shape[-1] <= N_FFT // 2:
         raise ValueError(
             f"need more than {N_FFT // 2} samples for reflect padding, "

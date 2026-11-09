@@ -136,10 +136,20 @@ def test_a_single_chunk_has_no_fade_at_either_end() -> None:
     np.testing.assert_allclose(demix(audio, _identity, chunk=SMALL), audio)
 
 
-def test_the_last_chunk_has_no_fade_out() -> None:
-    # Without overlap the one chunk is both first and last, so neither end may fade.
-    audio = np.ones((2, SMALL), dtype=np.float32)
-    np.testing.assert_allclose(demix(audio, _identity, chunk=SMALL, overlap=1), audio)
+@pytest.mark.parametrize("overlap", [0, 1, SMALL + 1])
+def test_demix_rejects_an_overlap_that_leaves_gaps_or_no_step(overlap: int) -> None:
+    audio = np.ones((2, 400), dtype=np.float32)
+
+    with pytest.raises(ValueError, match="overlap"):
+        demix(audio, _identity, chunk=SMALL, overlap=overlap)
+
+
+@pytest.mark.parametrize("shape", [(400,), (1, 400), (3, 400)])
+def test_demix_rejects_audio_that_is_not_stereo(shape: tuple[int, ...]) -> None:
+    audio = np.ones(shape, dtype=np.float32)
+
+    with pytest.raises(ValueError, match="audio must have shape"):
+        demix(audio, _identity, chunk=SMALL)
 
 
 def test_the_first_chunk_has_no_fade_in() -> None:
