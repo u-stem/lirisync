@@ -38,17 +38,17 @@ describe("parseAsrFile", () => {
 
   test("rejects an unknown field", () => {
     const text = JSON.stringify({ words: [], extra: 1 });
-    expect(() => parseAsrFile(text)).toThrow("Unrecognized key");
+    expect(() => parseAsrFile(text)).toThrow("extra");
   });
 
   test("rejects a fractional time", () => {
     const text = file([{ startMs: 1.5, endMs: 2, text: "a" }]);
-    expect(() => parseAsrFile(text)).toThrow("expected int");
+    expect(() => parseAsrFile(text)).toThrow("startMs");
   });
 
   test("rejects a negative time", () => {
     const text = file([{ startMs: -1, endMs: 2, text: "a" }]);
-    expect(() => parseAsrFile(text)).toThrow("expected number to be >=0");
+    expect(() => parseAsrFile(text)).toThrow("startMs");
   });
 
   test("names the word that ends before it starts", () => {

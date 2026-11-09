@@ -32,11 +32,14 @@ export function assertAsrName(asrName: string): void {
   }
 }
 
-/** Slugs of the songs under `songsDir`, sorted. Throws when there are none. */
+/**
+ * Slugs of the songs under `songsDir`, sorted. Directories starting with a dot
+ * belong to tools, not to the evaluation set. Throws when there are none.
+ */
 export async function listSongs(songsDir: string): Promise<string[]> {
   const entries = await readdir(songsDir, { withFileTypes: true });
   const slugs = entries
-    .filter((entry) => entry.isDirectory())
+    .filter((entry) => entry.isDirectory() && !entry.name.startsWith("."))
     .map((entry) => entry.name)
     .sort();
   if (slugs.length === 0) {

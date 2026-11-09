@@ -42,6 +42,12 @@ describe("listSongs", () => {
     expect(await listSongs(dir)).toEqual(["a"]);
   });
 
+  test("ignores directories whose name starts with a dot", async () => {
+    await addSong("a");
+    await mkdir(join(dir, ".cache"));
+    expect(await listSongs(dir)).toEqual(["a"]);
+  });
+
   test("rejects a directory with no songs", async () => {
     await expect(listSongs(dir)).rejects.toThrow("No songs");
   });
