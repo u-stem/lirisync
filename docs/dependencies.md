@@ -14,7 +14,7 @@
 
 | パッケージ | 版 | 区分 | ライセンス | 最終リリース | 用途 | 代替 |
 | --- | --- | --- | --- | --- | --- | --- |
-| zod | 4.6.7 | 実行時（core） | MIT | 2026-10-12 | 外部入力の parse | valibot |
+| zod | 4.6.7 | 実行時（core）、評価（eval） | MIT | 2026-10-12 | 外部入力の parse | valibot |
 | typescript | 7.0.2 | 開発 | Apache-2.0 | 2026-07-08 | 型検査 | なし（言語本体） |
 | @biomejs/biome | 2.6.6 | 開発 | MIT OR Apache-2.0 | 2026-11-06 | lint と整形 | ESLint と Prettier |
 | @types/bun | 1.4.4 | 開発 | MIT | 2026-10-23 | `bun:test` などの型 | なし |

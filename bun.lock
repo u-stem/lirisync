@@ -15,6 +15,7 @@
       "version": "0.0.0",
       "dependencies": {
         "@lirisync/core": "workspace:*",
+        "zod": "4.6.7",
       },
     },
     "packages/core": {
