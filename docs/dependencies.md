@@ -75,3 +75,11 @@ faster-whisper の最終リリースは 2025-10-31 で 12 か月を超えたが�
 faster-whisper 1.2.1 は `av.open(metadata_errors=...)` を呼ぶが、PyAV 19 でこの引数がなくなった（18.1.0 は受け付け、19.0.0 は `TypeError`）。faster-whisper の要求は `av>=11` だけなので、`eval/transcribe/pyproject.toml` で `av>=16,<19` に絞っている。faster-whisper を更新するときは、この上限を外せるか確かめる。
 
 確認日は 2026-11-10。
+
+## 移植したアルゴリズム
+
+依存ではなく、コードを書き起こしたもの。パッケージは入れていない。
+
+- `workers/align/src/lirisync_worker/separation/demix.py` は、Music-Source-Separation-Training の `utils/model_utils.py` にある `demix` の、チャンク分割と重ね合わせの規則（重なり、端の反射パディング、フェードの窓、最初と最後のチャンクの扱い、カウンタでの割り算）を NumPy で書き直したもの。コードは写していない
+- 出典：https://github.com/ZFTurbo/Music-Source-Separation-Training
+- ライセンス：MIT（Copyright (c) 2024 Roman Solovyev (ZFTurbo)）
