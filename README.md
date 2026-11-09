@@ -44,6 +44,13 @@ uv --directory workers/align run ruff check
 uv --directory workers/align run mypy
 uv --directory workers/align run pytest
 uv --directory workers/align run python tools/check_licenses.py
+
+# 評価用の書き起こしツール（配布しない）
+uv --directory eval/transcribe sync
+uv --directory eval/transcribe run ruff check
+uv --directory eval/transcribe run ruff format --check
+uv --directory eval/transcribe run mypy
+uv --directory eval/transcribe run pytest
 ```
 
 配布版に入れる依存は、MIT・Apache-2.0・BSD などの寛容なライセンスに限ります。許可するライセンスは `scripts/allowed-licenses.json` にあり、CI で検査します。

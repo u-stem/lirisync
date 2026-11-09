@@ -1,4 +1,6 @@
 import { describe, expect, test } from "bun:test";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { parseMs } from "@lirisync/core";
 import { parseAsrFile } from "../src/asr-file";
 
@@ -65,5 +67,21 @@ describe("parseAsrFile", () => {
       { startMs: 40, endMs: 70, text: "b" },
     ]);
     expect(() => parseAsrFile(text)).toThrow("word 2: starts before word 1");
+  });
+});
+
+describe("the transcript sample shared with eval/transcribe", () => {
+  // The Python writer's test compares its output to this same file.
+  const sample = readFileSync(
+    join(import.meta.dir, "../transcribe/tests/fixtures/asr-sample.json"),
+    "utf8",
+  );
+
+  test("parses, keeping a leading space and Japanese text as they are", () => {
+    expect(parseAsrFile(sample).map((word) => word.text)).toEqual([
+      "風が",
+      " line",
+      "吹く",
+    ]);
   });
 });
