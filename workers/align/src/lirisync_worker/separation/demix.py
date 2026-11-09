@@ -109,7 +109,7 @@ def demix(
 
 
 def _check_arguments(audio: Audio, chunk: int, overlap: int) -> None:
-    if audio.ndim != STEREO or audio.shape[0] != STEREO:
+    if audio.ndim != 2 or audio.shape[0] != STEREO:  # noqa: PLR2004 - [channels, samples]
         raise ValueError(f"audio must have shape (2, samples), got {audio.shape}")
     if overlap < MIN_OVERLAP or chunk // overlap < 1:
         raise ValueError(f"need 2 <= overlap <= chunk, got overlap={overlap}, chunk={chunk}")
