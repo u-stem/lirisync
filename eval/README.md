@@ -9,7 +9,7 @@ eval/songs/<slug>/
 ├─ labels.txt   # 正解ラベル（コミットする）
 ├─ lyrics.txt   # 歌詞。1 行が 1 表示行（.gitignore 済み）
 ├─ audio/       # 音源（.gitignore 済み）
-└─ asr/         # ASR の書き起こし。<name>.json（.gitignore 済み）
+└─ asr/         # ASR の書き起こし。<name>.json と <name>.meta.json（.gitignore 済み）
 ```
 
 `asr/` の書き起こしは歌詞そのものなので、`lyrics.txt` と同じくコミットしません。
@@ -56,6 +56,42 @@ Audacity のラベルで付け、「ラベルを書き出す」で `labels.txt` 
 - 単語は開始時刻の昇順に並べます（同じ開始時刻、重なりは可）。終了が開始より前の単語と、並びの崩れた単語は、何番目の単語かを示してエラーにします
 - 上記以外のフィールドはエラーにします
 - `text` は書き起こしの出力のまま入れます。Whisper は英単語の先頭に空白を付けます（`" line"`）。この空白を消すと、英語の行が一致しなくなります
+
+## 書き起こしを作る（Windows 機）
+
+`asr/<name>.json` は、評価専用のツール `eval/transcribe` が faster-whisper で作ります。配布版やワーカーには入れません（faster-whisper が PyAV 経由で FFmpeg を、GPU では NVIDIA の CUDA ライブラリを要求し、配布のライセンス方針に合わないため。詳しくは `docs/dependencies.md`）。
+
+各曲の `audio/vocals.*` を書き起こします。`audio/` には、`vocals` という名前（拡張子は何でも）のファイルを 1 曲に 1 つだけ置きます。ボーカルを分離していない音源を使うときは、`audio/mix.*` のように別の名前で置き、`--audio mix` を付けます。
+
+```sh
+uv --directory eval/transcribe run lirisync-transcribe --model Systran/faster-whisper-large-v3 --name large-v3
+```
+
+全曲を書き起こしてから `bun run eval --asr large-v3` に渡します。書き出す前に、引数、曲、音声ファイル、書き出し先の重複をすべて確かめ、そのあとでモデルを読み込みます。長い推論のあとで入力の誤りに気づくことを避けるためです。
+
+| オプション | 内容 |
+| --- | --- |
+| `--model <repo id またはパス>` | 使う Whisper のモデル。Hugging Face のリポジトリ ID か、ローカルのディレクトリ。必須 |
+| `--name <name>` | 書き出す名前（`asr/<name>.json`）。必須。使える文字は `bun run eval --asr` と同じ |
+| `--songs-dir <path>` | 曲のディレクトリ。既定は `../songs`。`uv --directory eval/transcribe` は `eval/transcribe` で動くため、既定でこのリポジトリの `eval/songs` を指します |
+| `--song <slug>` | 書き起こす曲を絞ります。繰り返して複数指定できます。存在しない slug はエラーです |
+| `--audio <stem>` | 使う音声ファイルの名前（拡張子なし）。既定は `vocals` |
+| `--device <device>` | `auto`、`cpu`、`cuda`。既定は `auto` |
+| `--compute-type <type>` | CTranslate2 の計算型。既定は `default` |
+| `--beam-size <n>` | ビームの幅。1 以上の整数。既定は 5 |
+| `--vad` | 音声区間検出を使います。既定は切です。歌の部分を切り落とすことがあるためです |
+| `--overwrite` | 既にある `asr/<name>.json` を置き換えます。付けないと、あるときはエラーです |
+| `--skip-existing` | 既に `asr/<name>.json` がある曲を飛ばします。`--overwrite` とは同時に使えません |
+
+- GPU（`--device cuda`、または `auto` で GPU が見つかったとき）には、NVIDIA のドライバと、ctranslate2 が要求する CUDA のライブラリが要ります。必要な版は ctranslate2 の版で変わるので、ここには書きません。[CTranslate2 の導入手順](https://opennmt.net/CTranslate2/installation.html)を見てください。CPU（`--device cpu`）でも動きますが、大きなモデルでは遅くなります
+- モデルは初回に Hugging Face のキャッシュへダウンロードされます。2 回目からは再利用します
+- 言語は日本語（`ja`）に固定し、単語ごとの時刻を付けます。単語の文字列は、空白を含めて書き起こしの出力のまま `text` に入れます
+- 曲ごとに `asr/<name>.meta.json` も書きます。キーはすべて camelCase です。モデル（`model`）、faster-whisper・ctranslate2・av の版（`fasterWhisper`、`ctranslate2`、`av`）、要求したデバイスと計算型（`device`、`computeType`）、実際に使われたもの（`deviceUsed`、`computeTypeUsed`）、ビーム幅（`beamSize`）、VAD の有無（`vad`）、言語（`language`）、使った音声ファイル（`audio`）、揃えた開始の数（`clampedStarts`）を記録します。結果を比べるときの手がかりです
+- 進捗、警告、エラーは標準エラー出力に出ます。失敗したときは `error: ...` を出して終了コード 1 で終わります
+- 途中で失敗したときは、同じコマンドに `--skip-existing` を付けて再実行すると、書き終えた曲を飛ばして続きから進めます。`asr/<name>.json` は曲の最後に書くので、あれば書き終えたものとみなせます（先に `<name>.meta.json` を書きます。`--overwrite` では、書き始める前に古い `<name>.json` を消します）。設定を変えて取り直すときは付けません
+- Whisper の単語の開始時刻が前の単語より戻った場合は、その開始を前の単語の開始に揃え（終了は開始より前にならないようにします）、曲ごとに揃えた数を `warning: <slug>: N word starts clamped` で知らせ、`.meta.json` の `clampedStarts` に記録します。単語の順は変えません。1 曲で揃えた数が多いときは、その書き起こしを疑ってください
+- 単語が 1 つもない曲は `warning: <slug>: no words` を出します（終了コードは 0 のままです）。音声が空か、モデルが何も聞き取れなかった可能性があります
+- `<name>` は `.meta` で終われません。`<name>.meta.json` と名前がぶつかるためです
 
 ## 実行
 

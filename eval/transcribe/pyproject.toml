@@ -1,0 +1,61 @@
+[project]
+name = "lirisync-eval-transcribe"
+version = "0.0.0"
+description = "Evaluation-only transcription: runs faster-whisper on each eval song and writes asr/<name>.json."
+# Same bounds as the worker (onnxruntime Windows wheels, recent av).
+requires-python = ">=3.12,<3.15"
+dependencies = [
+  "faster-whisper>=1.2.1,<2",
+  # faster-whisper 1.2.1 calls av.open(metadata_errors=...), which PyAV 19 removed
+  # (checked: 18.1.0 accepts it, 19.0.0 raises TypeError). It only asks for av>=11.
+  # Lower bound: 16.0.1 is the oldest version tried (it accepts the argument); the
+  # decode test in tests/test_faster_whisper_decode.py guards the upper bound.
+  "av>=16,<19",
+]
+
+[project.scripts]
+lirisync-transcribe = "lirisync_transcribe.cli:main"
+
+[dependency-groups]
+dev = [
+  "mypy>=2.4,<3",
+  "pytest>=9.2,<10",
+  "ruff>=0.17,<0.18",
+]
+
+[build-system]
+requires = ["uv_build>=0.13.6,<0.14"]
+build-backend = "uv_build"
+
+# The project name differs from the import package (the name says it is eval-only).
+[tool.uv.build-backend]
+module-name = "lirisync_transcribe"
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "SIM", "C4", "PT", "RUF", "N", "PL", "T20", "TID"]
+ignore = []
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["PLR2004"]
+# The command-line tool reports progress and errors on stderr.
+"src/lirisync_transcribe/cli.py" = ["T201"]
+
+[tool.mypy]
+strict = true
+files = ["src", "tests"]
+python_version = "3.12"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra --strict-markers"
+
+# faster-whisper ships no py.typed marker, so its types are not available. The
+# code touches it in one place (load_whisper), behind the Transcriber protocol.
+[[tool.mypy.overrides]]
+module = ["faster_whisper", "faster_whisper.*"]
+ignore_missing_imports = true

@@ -1,0 +1,19 @@
+{
+  "words": [
+    {
+      "startMs": 12300,
+      "endMs": 12900,
+      "text": "風が"
+    },
+    {
+      "startMs": 12900,
+      "endMs": 13600,
+      "text": " line"
+    },
+    {
+      "startMs": 13600,
+      "endMs": 13600,
+      "text": "吹く"
+    }
+  ]
+}

@@ -27,6 +27,10 @@ uv --directory workers/align run ruff format --check
 uv --directory workers/align run mypy
 uv --directory workers/align run pytest
 uv --directory workers/align run python tools/check_licenses.py
+uv --directory eval/transcribe run ruff check
+uv --directory eval/transcribe run ruff format --check
+uv --directory eval/transcribe run mypy
+uv --directory eval/transcribe run pytest
 ```
 
 ## 環境
