@@ -1,6 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import { parseMs } from "@lirisync/core";
-import { assertLabelsSung, parseAudacityLabels } from "../src/labels";
+import {
+  assertLabelsSung,
+  parseAudacityLabels,
+  splitLyricsLines,
+} from "../src/labels";
 
 describe("parseAudacityLabels", () => {
   test("reads a region label as the line's start time", () => {
@@ -89,5 +93,19 @@ describe("assertLabelsSung", () => {
     expect(() => assertLabelsSung(labels, lyrics)).toThrow(
       "line 9 is past the end",
     );
+  });
+});
+
+describe("splitLyricsLines", () => {
+  test("drops the empty element after a final newline", () => {
+    expect(splitLyricsLines("a\nb\n")).toEqual(["a", "b"]);
+  });
+
+  test("keeps blank lines in the middle", () => {
+    expect(splitLyricsLines("a\n\nb")).toEqual(["a", "", "b"]);
+  });
+
+  test("accepts CRLF line endings", () => {
+    expect(splitLyricsLines("a\r\nb\r\n")).toEqual(["a", "b"]);
   });
 });
