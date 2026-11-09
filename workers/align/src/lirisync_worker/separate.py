@@ -62,6 +62,9 @@ def make_separate(
     def model_for(path: Path, state: _FileState) -> Process:
         if latest and latest[0][:2] == (path, state):
             return latest[0][2]
+        # Release the previous session before loading the next one, so two
+        # models are never in memory at once.
+        latest.clear()
         try:
             loaded = model_loader(path)
         except ImportError as exc:

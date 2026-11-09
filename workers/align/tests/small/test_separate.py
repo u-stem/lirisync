@@ -778,6 +778,26 @@ def test_the_previous_model_is_released_when_another_file_is_used(tmp_path: Path
     assert created[0]() is None
 
 
+def test_the_previous_model_is_released_before_the_next_one_loads(tmp_path: Path) -> None:
+    created: list[weakref.ref[_Marked]] = []
+    alive_while_loading: list[bool] = []
+
+    def loader(_path: Path) -> Callable[[Audio], Audio]:
+        gc.collect()
+        alive_while_loading.append(any(ref() is not None for ref in created))
+        model = _Marked("m")
+        created.append(weakref.ref(model))
+        return model
+
+    run, other = _two_models(tmp_path)
+    run.samples = 1000
+    handler = run.handler(model_loader=loader)
+    handler(run.session(), run.params())
+    handler(run.session(), run.params(model=str(other)))
+
+    assert alive_while_loading == [False, False]
+
+
 # --- out of memory ----------------------------------------------------------
 
 
