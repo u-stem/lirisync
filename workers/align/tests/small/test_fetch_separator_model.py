@@ -164,6 +164,12 @@ def test_an_unknown_file_name_is_rejected() -> None:
         fetch.select_files(["other.bin"], with_fp16=False)
 
 
+def test_a_file_named_twice_is_fetched_once() -> None:
+    chosen = fetch.select_files([fetch.FP16_FILES[0]], with_fp16=True)
+
+    assert chosen == list(fetch.FP16_FILES)
+
+
 def test_every_pinned_hash_is_a_sha256_hex_digest() -> None:
     assert all(re.fullmatch(r"[0-9a-f]{64}", h) for h in fetch.PINNED_SHA256.values())
 
