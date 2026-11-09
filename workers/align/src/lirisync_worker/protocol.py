@@ -21,6 +21,8 @@ ErrorCode = Literal[
     "model_missing",
     "asr_degenerate",
     "cancelled",
+    "ffmpeg_missing",
+    "audio_unreadable",
 ]
 
 Message = dict[str, object]
@@ -97,6 +99,21 @@ def parse_request(line: str) -> Request:
 
 def result_message(request_id: str, result: Mapping[str, object]) -> Message:
     return {"id": request_id, "type": "result", "result": dict(result)}
+
+
+def progress_message(request_id: str, stage: str, ratio: float, eta_ms: int | None) -> Message:
+    """A progress message. Raises ``ValueError`` for values the schema forbids."""
+    if not 0.0 <= ratio <= 1.0:  # also false for NaN
+        raise ValueError(f"progress ratio must be within [0, 1], got {ratio}")
+    if eta_ms is not None and eta_ms < 0:
+        raise ValueError(f"progress eta must not be negative, got {eta_ms}")
+    return {
+        "id": request_id,
+        "type": "progress",
+        "stage": stage,
+        "ratio": ratio,
+        "etaMs": eta_ms,
+    }
 
 
 def error_message(request_id: str | None, code: ErrorCode, message: str) -> Message:

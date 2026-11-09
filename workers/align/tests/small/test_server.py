@@ -56,7 +56,7 @@ def test_hello_reports_worker_version() -> None:
 def test_hello_lists_supported_methods() -> None:
     _, messages = _serve([_request("hello")])
 
-    assert _result_of(messages[0])["methods"] == ["hello", "anchor", "shutdown"]
+    assert _result_of(messages[0])["methods"] == ["hello", "anchor", "separate", "shutdown"]
 
 
 def test_hello_rejects_non_empty_params() -> None:
@@ -244,3 +244,108 @@ def test_hello_lists_methods_registered_after_server_construction() -> None:
     _, messages = _serve([_request("hello")], server)
 
     assert _result_of(messages[0])["methods"] == ["hello", "late"]
+
+
+def _reporting(_session: Session, _params: Mapping[str, object]) -> dict[str, object]:
+    _session.progress("work", 0.5, 1200)
+    _session.progress("work", 1.0, None)
+    return {}
+
+
+def test_progress_from_a_handler_precedes_its_result() -> None:
+    _, messages = _serve([_request("report")], Server(Registry({"report": _reporting})))
+
+    assert [m["type"] for m in messages] == ["progress", "progress", "result"]
+
+
+def test_progress_message_carries_the_request_id_and_values() -> None:
+    _, messages = _serve([_request("report", id_="r5")], Server(Registry({"report": _reporting})))
+
+    assert messages[0] == {
+        "id": "r5",
+        "type": "progress",
+        "stage": "work",
+        "ratio": 0.5,
+        "etaMs": 1200,
+    }
+
+
+def test_progress_without_an_estimate_has_null_eta() -> None:
+    _, messages = _serve([_request("report")], Server(Registry({"report": _reporting})))
+
+    assert messages[1]["etaMs"] is None
+
+
+def test_progress_is_bound_to_the_current_request_only() -> None:
+    server = Server(Registry({"report": _reporting, "ok": _ok}))
+    _, messages = _serve([_request("report", id_="a"), _request("ok", id_="b")], server)
+
+    assert [m["id"] for m in messages] == ["a", "a", "a", "b"]
+
+
+def test_progress_outside_a_request_is_ignored() -> None:
+    session = Session(registry=Registry())
+
+    session.progress("work", 0.5, None)
+
+
+def test_handle_line_passes_progress_to_the_emit_callback() -> None:
+    emitted: list[dict[str, object]] = []
+    server = Server(Registry({"report": _reporting}))
+
+    server.handle_line(_request("report"), emitted.append)
+
+    assert [m["type"] for m in emitted] == ["progress", "progress"]
+
+
+def test_handle_line_returns_only_the_final_message() -> None:
+    server = Server(Registry({"report": _reporting}))
+
+    message = server.handle_line(_request("report"), lambda _m: None)
+
+    assert message["type"] == "result"
+
+
+def test_progress_after_the_request_has_finished_is_dropped() -> None:
+    late: list[Session] = []
+
+    def keep(session: Session, _params: Mapping[str, object]) -> dict[str, object]:
+        late.append(session)
+        return {}
+
+    emitted: list[dict[str, object]] = []
+    server = Server(Registry({"keep": keep}))
+    server.handle_line(_request("keep"), emitted.append)
+    late[0].progress("work", 1.0, None)
+
+    assert emitted == []
+
+
+def test_nan_progress_becomes_internal_error() -> None:
+    def nan_progress(session: Session, _params: Mapping[str, object]) -> dict[str, object]:
+        session.progress("work", float("nan"), None)
+        return {}
+
+    _, messages = _serve([_request("bad")], Server(Registry({"bad": nan_progress})))
+
+    assert messages[-1]["code"] == "internal"
+
+
+def test_nan_progress_is_not_written_to_the_channel() -> None:
+    def nan_progress(session: Session, _params: Mapping[str, object]) -> dict[str, object]:
+        session.progress("work", float("nan"), None)
+        return {}
+
+    _, messages = _serve([_request("bad")], Server(Registry({"bad": nan_progress})))
+
+    assert [m["type"] for m in messages] == ["error"]
+
+
+def test_out_of_range_progress_becomes_internal_error() -> None:
+    def too_far(session: Session, _params: Mapping[str, object]) -> dict[str, object]:
+        session.progress("work", 1.5, None)
+        return {}
+
+    _, messages = _serve([_request("bad")], Server(Registry({"bad": too_far})))
+
+    assert [m.get("code") for m in messages] == ["internal"]

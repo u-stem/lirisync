@@ -30,6 +30,8 @@ export const ErrorCode = z.enum([
   "model_missing",
   "asr_degenerate",
   "cancelled",
+  "ffmpeg_missing",
+  "audio_unreadable",
 ]);
 export type ErrorCode = z.infer<typeof ErrorCode>;
 
@@ -100,3 +102,17 @@ const AnchoredLine = z.strictObject({
 
 export const AnchorResult = z.strictObject({ lines: z.array(AnchoredLine) });
 export type AnchorResult = z.infer<typeof AnchorResult>;
+
+export const SeparateParams = z.strictObject({
+  input: z.string().min(1),
+  output: z.string().min(1),
+  model: z.string().min(1),
+});
+export type SeparateParams = z.infer<typeof SeparateParams>;
+
+export const SeparateResult = z.strictObject({
+  durationMs: Ms,
+  sampleRate: z.literal(44100),
+  channels: z.literal(2),
+});
+export type SeparateResult = z.infer<typeof SeparateResult>;

@@ -53,7 +53,9 @@
         "gpu_unavailable",
         "model_missing",
         "asr_degenerate",
-        "cancelled"
+        "cancelled",
+        "ffmpeg_missing",
+        "audio_unreadable"
       ]
     },
     "Error": {
@@ -155,6 +157,43 @@
         }
       },
       "required": ["lines"],
+      "additionalProperties": false
+    },
+    "SeparateParams": {
+      "description": "Extract the vocals of an audio file into a WAV file. Paths are absolute or relative to the worker's working directory; which paths are allowed is the host's decision. The worker only checks that output ends with .wav (any case), has an existing parent directory, and differs from input. Progress is reported with stage 'separate'.",
+      "type": "object",
+      "properties": {
+        "input": {
+          "description": "Any audio file the ffmpeg executable can decode; its first audio stream is used.",
+          "type": "string",
+          "minLength": 1
+        },
+        "output": {
+          "description": "Where the vocals are written as a 32-bit float stereo 44.1 kHz WAV. The file is written beside its final name and then renamed, so a failed run leaves no partial file.",
+          "type": "string",
+          "minLength": 1
+        },
+        "model": {
+          "description": "The separation model, an ONNX file with input 'spec' and output 'mask'.",
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": ["input", "output", "model"],
+      "additionalProperties": false
+    },
+    "SeparateResult": {
+      "type": "object",
+      "properties": {
+        "durationMs": {
+          "description": "Length of the decoded audio, in whole milliseconds (rounded down).",
+          "type": "integer",
+          "minimum": 0
+        },
+        "sampleRate": { "const": 44100 },
+        "channels": { "const": 2 }
+      },
+      "required": ["durationMs", "sampleRate", "channels"],
       "additionalProperties": false
     }
   }
