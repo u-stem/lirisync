@@ -15,9 +15,12 @@ from lirisync_worker.protocol import (
     encode_message,
     error_message,
     parse_request,
+    progress_message,
     result_message,
 )
+from lirisync_worker.separate import make_separate
 
+type ProgressSink = Callable[[str, float, int | None], None]
 type Handler = Callable[[Session, Mapping[str, object]], dict[str, object]]
 
 
@@ -43,6 +46,13 @@ class Session:
 
     registry: Registry
     exit_requested: bool = False
+    # Bound by the server to the request being handled; None between requests.
+    progress_sink: ProgressSink | None = None
+
+    def progress(self, stage: str, ratio: float, eta_ms: int | None) -> None:
+        """Report progress of the request being handled; a no-op outside one."""
+        if self.progress_sink is not None:
+            self.progress_sink(stage, ratio, eta_ms)
 
 
 def _require_no_params(params: Mapping[str, object]) -> None:
@@ -73,7 +83,14 @@ def _sudachi_reader() -> Reader:
 
 
 def default_registry() -> Registry:
-    return Registry({"hello": hello, "anchor": make_anchor(_sudachi_reader), "shutdown": shutdown})
+    return Registry(
+        {
+            "hello": hello,
+            "anchor": make_anchor(_sudachi_reader),
+            "separate": make_separate(),
+            "shutdown": shutdown,
+        }
+    )
 
 
 class Server:
@@ -81,8 +98,12 @@ class Server:
         self._registry = registry if registry is not None else default_registry()
         self._session = Session(registry=self._registry)
 
-    def handle_line(self, line: str) -> Message:
-        """Turn one input line into exactly one response message."""
+    def handle_line(self, line: str, emit: Callable[[Message], None] | None = None) -> Message:
+        """Turn one input line into exactly one final message.
+
+        Progress a handler reports is passed to `emit` as it happens, before
+        this returns; without `emit` it is dropped.
+        """
         request_id: str | None = None
         try:
             request = parse_request(line)
@@ -90,7 +111,12 @@ class Server:
             handler = self._registry.get(request.method)
             if handler is None:
                 raise ProtocolError("unknown_method", f"unknown method: {request.method}")
-            message = result_message(request.id, handler(self._session, request.params))
+            self._session.progress_sink = _progress_sink(request.id, emit)
+            try:
+                result = handler(self._session, request.params)
+            finally:
+                self._session.progress_sink = None
+            message = result_message(request.id, result)
             # Serialization failures (NaN, non-JSON types) are handler bugs too,
             # so surface them here rather than when the channel writes the line.
             encode_message(message)
@@ -104,10 +130,25 @@ class Server:
     def serve(self, lines: Iterable[str], channel: ProtocolChannel) -> int:
         """Process lines until shutdown or end of input. Returns the exit code."""
         for line in _non_blank(lines):
-            channel.send(self.handle_line(line))
+            channel.send(self.handle_line(line, channel.send))
             if self._session.exit_requested:
                 break
         return 0
+
+
+def _progress_sink(request_id: str, emit: Callable[[Message], None] | None) -> ProgressSink:
+    def sink(stage: str, ratio: float, eta_ms: int | None) -> None:
+        # Built and checked even when nobody listens, so a handler's bad values
+        # fail the same way with or without `emit`. `progress_message` rejects
+        # out-of-range values and `encode_message` NaN and non-JSON ones; either
+        # raises inside the handler and the request ends in an `internal` error
+        # instead of a half-written line.
+        message = progress_message(request_id, stage, ratio, eta_ms)
+        encode_message(message)
+        if emit is not None:
+            emit(message)
+
+    return sink
 
 
 def _non_blank(lines: Iterable[str]) -> Iterator[str]:

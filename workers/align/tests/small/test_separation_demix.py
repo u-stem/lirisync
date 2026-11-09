@@ -4,7 +4,7 @@ import numpy as np
 import numpy.typing as npt
 import pytest
 
-from lirisync_worker.separation.demix import demix, fade_length, fade_window
+from lirisync_worker.separation.demix import chunk_count, demix, fade_length, fade_window
 from lirisync_worker.separation.stft import CHUNK
 
 SMALL = 100  # chunk length for most tests: step 50, border 50, fade 10
@@ -245,3 +245,33 @@ def test_a_process_that_mutates_its_input_does_not_corrupt_later_chunks() -> Non
 
     demix(audio, wipe_and_record, chunk=SMALL)
     np.testing.assert_array_equal(seen[1][:, :50], audio[:, 50:])
+
+
+@pytest.mark.parametrize(
+    "samples",
+    [1, 49, 50, 51, 99, 100, 101, 150, 199, 200, 201, 230, 251, 333, 1000],
+    ids=lambda n: f"n={n}",
+)
+def test_chunk_count_equals_the_number_of_process_calls(samples: int) -> None:
+    calls: list[int] = []
+
+    def counting(part: npt.NDArray[np.float32]) -> npt.NDArray[np.float32]:
+        calls.append(1)
+        return part
+
+    demix(_random_stereo(samples), counting, chunk=SMALL)
+
+    assert chunk_count(samples, chunk=SMALL) == len(calls)
+
+
+def test_chunk_count_of_no_samples_is_zero() -> None:
+    assert chunk_count(0, chunk=SMALL) == 0
+
+
+def test_chunk_count_rejects_an_overlap_below_two() -> None:
+    with pytest.raises(ValueError, match="overlap"):
+        chunk_count(10, chunk=SMALL, overlap=1)
+
+
+def test_chunk_count_of_eight_seconds_at_the_default_chunk_is_two() -> None:
+    assert chunk_count(CHUNK) == 2

@@ -6,6 +6,8 @@ import {
   HelloResult,
   Request,
   Response,
+  SeparateParams,
+  SeparateResult,
 } from "../../adapters/worker-protocol";
 
 const SCHEMA_PATH = `${import.meta.dir}/../../../protocol/worker.schema.json`;
@@ -29,6 +31,12 @@ const line = {
 };
 const word = { startMs: 1000, endMs: 1200, text: "かぜ" };
 const anchorParams = { lyrics: ["風"], words: [word], ignored: ["♪"] };
+const separateParams = {
+  input: "/music/song.mp3",
+  output: "/work/vocals.wav",
+  model: "/models/sep.onnx",
+};
+const separateResult = { durationMs: 3000, sampleRate: 44100, channels: 2 };
 
 type Case = [name: string, value: unknown];
 
@@ -74,6 +82,14 @@ const cases: Record<string, { parser: z.ZodType; values: Case[] }> = {
       [
         "an unknown error code",
         { id: "r1", type: "error", code: "nope", message: "m" },
+      ],
+      [
+        "an ffmpeg_missing error",
+        { id: "r1", type: "error", code: "ffmpeg_missing", message: "m" },
+      ],
+      [
+        "an audio_unreadable error",
+        { id: "r1", type: "error", code: "audio_unreadable", message: "m" },
       ],
       ["an unknown type", { id: "r1", type: "log", message: "m" }],
       ["an extra key", { id: "r1", type: "result", result: {}, x: 1 }],
@@ -133,6 +149,31 @@ const cases: Record<string, { parser: z.ZodType; values: Case[] }> = {
       ["a ratio past 1", { lines: [{ ...line, matchRatio: 1.5 }] }],
       ["a missing ambiguous", { lines: [{ ...line, ambiguous: undefined }] }],
       ["an extra key", { lines: [], x: 1 }],
+    ],
+  },
+  SeparateParams: {
+    parser: SeparateParams,
+    values: [
+      ["separate params", separateParams],
+      ["an empty input", { ...separateParams, input: "" }],
+      ["an empty output", { ...separateParams, output: "" }],
+      ["an empty model", { ...separateParams, model: "" }],
+      ["a numeric input", { ...separateParams, input: 1 }],
+      ["a missing model", { input: "a.mp3", output: "b.wav" }],
+      ["an extra key", { ...separateParams, x: 1 }],
+    ],
+  },
+  SeparateResult: {
+    parser: SeparateResult,
+    values: [
+      ["a separate result", separateResult],
+      ["no duration", { ...separateResult, durationMs: 0 }],
+      ["a negative duration", { ...separateResult, durationMs: -1 }],
+      ["a fractional duration", { ...separateResult, durationMs: 1.5 }],
+      ["another sample rate", { ...separateResult, sampleRate: 48000 }],
+      ["mono", { ...separateResult, channels: 1 }],
+      ["a missing channels", { durationMs: 1, sampleRate: 44100 }],
+      ["an extra key", { ...separateResult, x: 1 }],
     ],
   },
 };

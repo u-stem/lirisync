@@ -35,6 +35,19 @@ def fade_window(chunk: int, fade: int) -> Audio:
     return window
 
 
+def chunk_count(samples: int, chunk: int = CHUNK, overlap: int = 2) -> int:
+    """How many times `demix` calls `process` for `samples` samples of input.
+
+    Raises `ValueError` for an `overlap` that `demix` rejects.
+    """
+    if overlap < MIN_OVERLAP or chunk // overlap < 1:
+        raise ValueError(f"need 2 <= overlap <= chunk, got overlap={overlap}, chunk={chunk}")
+    step = chunk // overlap
+    border = chunk - step
+    total = samples + 2 * border if samples > 2 * border and border > 0 else samples
+    return -(-total // step)
+
+
 def demix(
     audio: Audio,
     process: Callable[[Audio], Audio],
@@ -99,9 +112,11 @@ def demix(
         result[:, start:end] += out[:, :part_len] * window[:part_len]
         counter[start:end] += window[:part_len]
 
-    with np.errstate(divide="ignore", invalid="ignore"):
-        blended: Audio = result / counter
-    blended = np.nan_to_num(blended, nan=0.0).astype(np.float32, copy=False)
+    # In place, to avoid a second full-size array. Samples no window covers
+    # (counter 0) are left as they are, which is 0, and NaN becomes 0.
+    blended: Audio = result
+    np.divide(blended, counter, out=blended, where=counter != 0)
+    np.nan_to_num(blended, copy=False, nan=0.0)
 
     if length > 2 * border and border > 0:
         blended = blended[:, border:-border]

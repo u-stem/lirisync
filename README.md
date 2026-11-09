@@ -61,6 +61,8 @@ uv --directory eval/transcribe run pytest
 
 int8 のモデルは、モデルカードによると AVX512-VNNI と AVX-VNNI を持つ CPU で正確で、VNNI のない古い x86 では飽和することがあります（上流では測っていません）。このテストの 47.5 dB は Apple silicon で測った値です。しきい値の 40 dB は目標ではなく下限で、移植が正しい場合と、レイアウトや STFT の誤り（ほぼ 0 dB になる）を分けるために置いています。
 
+ワーカーの `separate` は、音声のデコードと WAV の書き出しに ffmpeg を別プロセスで呼びます。開発中は `PATH` の `ffmpeg` を使い、別の実行ファイルを使うときは環境変数 `LIRISYNC_FFMPEG` にそのパスを入れます。見つからないと `ffmpeg_missing` を返します。実モデルを通すテスト（`tests/medium/test_separate_real_model.py`）は、`LIRISYNC_SEPARATOR_DIR` が未設定か ffmpeg がないと skip されます。
+
 配布版に入れる依存は、MIT・Apache-2.0・BSD などの寛容なライセンスに限ります。許可するライセンスは `scripts/allowed-licenses.json` にあり、CI で検査します。
 
 ## ライセンス

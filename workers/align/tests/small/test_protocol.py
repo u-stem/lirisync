@@ -15,6 +15,7 @@ from lirisync_worker.protocol import (
     encode_message,
     error_message,
     parse_request,
+    progress_message,
     result_message,
 )
 
@@ -211,3 +212,29 @@ def test_error_codes_match_the_schema_enum() -> None:
     schema = json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
 
     assert set(get_args(ErrorCode)) == set(schema["$defs"]["ErrorCode"]["enum"])
+
+
+def test_progress_message_has_the_wire_shape() -> None:
+    assert progress_message("r1", "s", 0.5, 10) == {
+        "id": "r1",
+        "type": "progress",
+        "stage": "s",
+        "ratio": 0.5,
+        "etaMs": 10,
+    }
+
+
+@pytest.mark.parametrize("ratio", [-0.1, 1.1, float("nan"), float("inf")])
+def test_progress_message_rejects_a_ratio_outside_zero_to_one(ratio: float) -> None:
+    with pytest.raises(ValueError, match="ratio"):
+        progress_message("r1", "s", ratio, None)
+
+
+def test_progress_message_rejects_a_negative_eta() -> None:
+    with pytest.raises(ValueError, match="eta"):
+        progress_message("r1", "s", 0.5, -1)
+
+
+@pytest.mark.parametrize("ratio", [0.0, 1.0])
+def test_progress_message_accepts_the_ends_of_the_range(ratio: float) -> None:
+    assert progress_message("r1", "s", ratio, 0)["ratio"] == ratio
