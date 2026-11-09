@@ -18,7 +18,7 @@ from lirisync_worker.protocol import PREFIX, ProtocolChannel
 from lirisync_worker.separate import make_separate
 from lirisync_worker.separation.stft import CHUNK
 from lirisync_worker.server import Registry, Server
-from tests.medium.test_worker_process import _is_valid, _request
+from tests.medium.support import is_valid, request
 
 Audio = npt.NDArray[np.float32]
 
@@ -48,13 +48,13 @@ def messages(tmp_path_factory: pytest.TempPathFactory) -> list[dict[str, object]
     handler = make_separate(decoder=_decode, encoder=_encode, model_loader=_identity_model)
     stream = io.StringIO()
     Server(Registry({"separate": handler})).serve(
-        [_request("separate", "p1", params)], ProtocolChannel(stream)
+        [request("separate", "p1", params)], ProtocolChannel(stream)
     )
     return [json.loads(line.removeprefix(PREFIX)) for line in stream.getvalue().splitlines()]
 
 
 def test_every_line_is_a_schema_valid_response(messages: list[dict[str, object]]) -> None:
-    assert all(_is_valid("Response", m) for m in messages)
+    assert all(is_valid("Response", m) for m in messages)
 
 
 def test_progress_comes_first_and_the_result_last(messages: list[dict[str, object]]) -> None:
@@ -66,7 +66,7 @@ def test_progress_comes_first_and_the_result_last(messages: list[dict[str, objec
 def test_the_final_result_is_a_schema_valid_separate_result(
     messages: list[dict[str, object]],
 ) -> None:
-    assert _is_valid("SeparateResult", messages[-1]["result"])
+    assert is_valid("SeparateResult", messages[-1]["result"])
 
 
 def test_every_message_carries_the_request_id(messages: list[dict[str, object]]) -> None:

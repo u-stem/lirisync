@@ -349,3 +349,13 @@ def test_out_of_range_progress_becomes_internal_error() -> None:
     _, messages = _serve([_request("bad")], Server(Registry({"bad": too_far})))
 
     assert [m.get("code") for m in messages] == ["internal"]
+
+
+def test_out_of_range_progress_is_internal_even_when_nobody_listens() -> None:
+    def too_far(session: Session, _params: Mapping[str, object]) -> dict[str, object]:
+        session.progress("work", 1.5, None)
+        return {}
+
+    server = Server(Registry({"bad": too_far}))
+
+    assert server.handle_line(_request("bad"))["code"] == "internal"

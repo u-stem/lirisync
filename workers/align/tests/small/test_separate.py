@@ -3,6 +3,7 @@
 import gc
 import os
 import re
+import sys
 import weakref
 from collections.abc import Callable, Iterator, Mapping
 from pathlib import Path
@@ -530,10 +531,11 @@ def test_an_input_that_is_a_directory_is_never_decoded(tmp_path: Path) -> None:
     assert run.decoded == []
 
 
-@pytest.mark.skipif(not hasattr(os, "mkfifo"), reason="named pipes need POSIX")
+@pytest.mark.skipif(sys.platform == "win32", reason="named pipes need POSIX")
 def test_an_input_that_is_a_fifo_is_an_invalid_request(tmp_path: Path) -> None:
     run = _Run(tmp_path)
-    os.mkfifo(run.input)
+    if sys.platform != "win32":  # narrows for mypy, which has no os.mkfifo on Windows
+        os.mkfifo(run.input)
 
     assert _code(run) == "invalid_request"
 
@@ -727,3 +729,73 @@ def test_the_temporary_name_is_short_and_fixed_in_form(tmp_path: Path) -> None:
     run.call(output=str(tmp_path / ("x" * 100 + ".wav")))
 
     assert re.fullmatch(r"\.lirisync-[0-9a-f]{16}\.tmp\.wav", run.written[0][0].name) is not None
+
+
+# --- only the latest model is kept ------------------------------------------
+
+
+def _two_models(tmp_path: Path) -> tuple[_Run, Path]:
+    run = _Run(tmp_path)
+    other = tmp_path / "other.onnx"
+    other.write_bytes(b"yy")
+    return run, other
+
+
+def test_going_back_to_an_earlier_model_loads_it_again(tmp_path: Path) -> None:
+    run, other = _two_models(tmp_path)
+    handler = run.handler()
+    handler(run.session(), run.params())
+    handler(run.session(), run.params(model=str(other)))
+    handler(run.session(), run.params())
+
+    assert len(run.loaded) == 3
+
+
+def test_the_same_model_twice_in_a_row_is_loaded_once(tmp_path: Path) -> None:
+    run, other = _two_models(tmp_path)
+    handler = run.handler()
+    handler(run.session(), run.params(model=str(other)))
+    handler(run.session(), run.params(model=str(other)))
+
+    assert len(run.loaded) == 1
+
+
+def test_the_previous_model_is_released_when_another_file_is_used(tmp_path: Path) -> None:
+    created: list[weakref.ref[_Marked]] = []
+
+    def loader(_path: Path) -> Callable[[Audio], Audio]:
+        model = _Marked("m")
+        created.append(weakref.ref(model))
+        return model
+
+    run, other = _two_models(tmp_path)
+    run.samples = 1000
+    handler = run.handler(model_loader=loader)
+    handler(run.session(), run.params())
+    handler(run.session(), run.params(model=str(other)))
+    gc.collect()
+
+    assert created[0]() is None
+
+
+# --- out of memory ----------------------------------------------------------
+
+
+def test_running_out_of_memory_while_loading_the_model_is_internal(tmp_path: Path) -> None:
+    def too_big(_path: Path) -> Callable[[Audio], Audio]:
+        raise MemoryError
+
+    run = _Run(tmp_path)
+
+    assert _code(run, run.handler(model_loader=too_big)) == "internal"
+
+
+def test_the_out_of_memory_message_names_the_model_file(tmp_path: Path) -> None:
+    def too_big(_path: Path) -> Callable[[Audio], Audio]:
+        raise MemoryError
+
+    run = _Run(tmp_path)
+    with pytest.raises(ProtocolError) as error:
+        run.handler(model_loader=too_big)(run.session(), run.params())
+
+    assert "sep.onnx" in error.value.message

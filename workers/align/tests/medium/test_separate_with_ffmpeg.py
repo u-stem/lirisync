@@ -5,14 +5,12 @@ returns the identity mask, so the real STFT, the demix, the decoder and the
 encoder run, and the output should be the input again.
 """
 
-import json
 import shutil
 import subprocess
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
-import jsonschema
 import numpy as np
 import numpy.typing as npt
 import pytest
@@ -24,8 +22,8 @@ from lirisync_worker.separation.model import MODEL_SHAPE, MaskModel
 from lirisync_worker.separation.stft import SAMPLE_RATE
 from lirisync_worker.server import Registry
 from lirisync_worker.server import Session as ServerSession
+from tests.medium.support import is_valid
 
-SCHEMA_PATH = Path(__file__).resolve().parents[4] / "protocol" / "worker.schema.json"
 SECONDS = 3
 
 Audio = npt.NDArray[np.float32]
@@ -116,14 +114,8 @@ def test_the_result_validates_against_the_schema(
     sine_wav: Path, model_file: Path, tmp_path: Path
 ) -> None:
     result = _call(_params(sine_wav, model_file, tmp_path / "vocals.wav"))
-    schema = json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
-    wrapper = {
-        "$schema": schema["$schema"],
-        "$defs": schema["$defs"],
-        "$ref": "#/$defs/SeparateResult",
-    }
 
-    assert jsonschema.Draft202012Validator(wrapper).is_valid(result)
+    assert is_valid("SeparateResult", result)
 
 
 def test_the_output_decodes_to_the_input_length(

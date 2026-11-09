@@ -18,6 +18,8 @@ from lirisync_worker.separation.demix import STEREO, Audio
 from lirisync_worker.separation.stft import SAMPLE_RATE
 
 FFMPEG_ENV = "LIRISYNC_FFMPEG"
+# Long enough for hours of audio; short enough that a hung ffmpeg does not hold the worker forever.
+FFMPEG_TIMEOUT_SECONDS = 600
 _STDERR_TAIL_CHARS = 500
 _BYTES_PER_FRAME = 4 * STEREO
 # Keeps a console window from flashing for each child on Windows; 0 elsewhere.
@@ -54,7 +56,12 @@ def _run_ffmpeg(arguments: list[str], stdin: bytes | None) -> subprocess.Complet
             capture_output=True,
             check=False,
             creationflags=_NO_WINDOW,
+            timeout=FFMPEG_TIMEOUT_SECONDS,
         )
+    except subprocess.TimeoutExpired:
+        raise ProtocolError(
+            "internal", f"ffmpeg did not finish within {FFMPEG_TIMEOUT_SECONDS} s and was stopped"
+        ) from None
     except OSError as exc:
         raise ProtocolError(
             "ffmpeg_missing",

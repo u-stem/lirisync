@@ -138,13 +138,15 @@ class Server:
 
 def _progress_sink(request_id: str, emit: Callable[[Message], None] | None) -> ProgressSink:
     def sink(stage: str, ratio: float, eta_ms: int | None) -> None:
-        if emit is None:
-            return
+        # Built and checked even when nobody listens, so a handler's bad values
+        # fail the same way with or without `emit`. `progress_message` rejects
+        # out-of-range values and `encode_message` NaN and non-JSON ones; either
+        # raises inside the handler and the request ends in an `internal` error
+        # instead of a half-written line.
         message = progress_message(request_id, stage, ratio, eta_ms)
-        # Fails here, inside the handler, for NaN and non-JSON values, so the
-        # request ends in an `internal` error instead of a half-written line.
         encode_message(message)
-        emit(message)
+        if emit is not None:
+            emit(message)
 
     return sink
 

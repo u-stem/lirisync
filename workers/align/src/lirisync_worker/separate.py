@@ -53,26 +53,30 @@ def make_separate(
 ) -> Callable[["Session", Mapping[str, object]], dict[str, object]]:
     """The handler.
 
-    The most recently loaded model of each file is kept, and is loaded again
-    when the file's modification time or size changes.
+    Only the most recently used model is kept, so a worker that is handed many
+    model files does not accumulate sessions. It is loaded again when another
+    file is used or when the file's modification time or size changes.
     """
-    models: dict[Path, tuple[_FileState, Process]] = {}
+    latest: list[tuple[Path, _FileState, Process]] = []
 
     def model_for(path: Path, state: _FileState) -> Process:
-        cached = models.get(path)
-        if cached is not None and cached[0] == state:
-            return cached[1]
+        if latest and latest[0][:2] == (path, state):
+            return latest[0][2]
         try:
             loaded = model_loader(path)
         except ImportError as exc:
             raise ProtocolError(
                 "internal", f"cannot load the inference runtime: {_first_line(exc)}"
             ) from None
+        except MemoryError:
+            raise ProtocolError(
+                "internal", f"out of memory while loading model file {path}"
+            ) from None
         except Exception as exc:  # onnxruntime raises its own types for bad files
             raise ProtocolError(
                 "model_missing", f"cannot use model file {path}: {_first_line(exc)}"
             ) from None
-        models[path] = (state, loaded)
+        latest[:] = [(path, state, loaded)]
         return loaded
 
     def separate(session: "Session", params: Mapping[str, object]) -> dict[str, object]:

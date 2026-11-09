@@ -8,6 +8,7 @@ import pytest
 
 from lirisync_worker.audio_io import (
     FFMPEG_ENV,
+    FFMPEG_TIMEOUT_SECONDS,
     decode_audio,
     encode_wav,
     ffmpeg_executable,
@@ -93,11 +94,13 @@ class _FakeFfmpeg:
         self, monkeypatch: pytest.MonkeyPatch, returncode: int, stdout: bytes, stderr: bytes
     ) -> None:
         self.argv: list[str] = []
+        self.kwargs: dict[str, object] = {}
         self._outcome = (returncode, stdout, stderr)
         monkeypatch.setattr("lirisync_worker.audio_io.subprocess.run", self._run)
 
-    def _run(self, argv: list[str], **_kwargs: object) -> subprocess.CompletedProcess[bytes]:
+    def _run(self, argv: list[str], **kwargs: object) -> subprocess.CompletedProcess[bytes]:
         self.argv = argv
+        self.kwargs = kwargs
         returncode, stdout, stderr = self._outcome
         return subprocess.CompletedProcess(argv, returncode, stdout, stderr)
 
@@ -219,3 +222,56 @@ def test_the_internal_encode_message_names_ffmpeg_for_a_killed_or_unrunnable_run
         encode_wav(np.zeros((2, 10), dtype=np.float32), tmp_path / "out.wav")
 
     assert "ffmpeg was killed or could not run" in error.value.message
+
+
+def _hang(monkeypatch: pytest.MonkeyPatch) -> None:
+    def run(argv: list[str], **kwargs: object) -> subprocess.CompletedProcess[bytes]:
+        raise subprocess.TimeoutExpired(argv, float(str(kwargs["timeout"])))
+
+    monkeypatch.setattr("lirisync_worker.audio_io.subprocess.run", run)
+
+
+def test_decoding_gives_ffmpeg_a_timeout(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    fake = _fake(monkeypatch)
+    decode_audio(tmp_path / "song.mp3")
+
+    assert fake.kwargs["timeout"] == FFMPEG_TIMEOUT_SECONDS
+
+
+def test_encoding_gives_ffmpeg_a_timeout(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    fake = _fake(monkeypatch, stdout=b"")
+    encode_wav(np.zeros((2, 10), dtype=np.float32), tmp_path / "out.wav")
+
+    assert fake.kwargs["timeout"] == FFMPEG_TIMEOUT_SECONDS
+
+
+def test_the_timeout_is_ten_minutes() -> None:
+    assert FFMPEG_TIMEOUT_SECONDS == 600
+
+
+def test_a_decode_that_times_out_is_internal(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _hang(monkeypatch)
+
+    assert _decode_code(tmp_path) == "internal"
+
+
+def test_the_decode_timeout_message_names_ffmpeg_and_the_limit(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _hang(monkeypatch)
+    with pytest.raises(ProtocolError) as error:
+        decode_audio(tmp_path / "song.mp3")
+
+    assert "ffmpeg did not finish within 600 s" in error.value.message
+
+
+def test_an_encode_that_times_out_is_internal(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _hang(monkeypatch)
+    with pytest.raises(ProtocolError) as error:
+        encode_wav(np.zeros((2, 10), dtype=np.float32), tmp_path / "out.wav")
+
+    assert (error.value.code, "ffmpeg did not finish" in error.value.message) == ("internal", True)

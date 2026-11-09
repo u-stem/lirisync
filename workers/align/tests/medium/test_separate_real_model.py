@@ -16,7 +16,7 @@ import numpy.typing as npt
 import pytest
 
 from lirisync_worker.audio_io import decode_audio, encode_wav, ffmpeg_executable
-from tests.medium.test_worker_process import WorkerRun, _is_valid, _request, _run_worker
+from tests.medium.support import WorkerRun, is_valid, request, run_worker
 
 ENV_VAR = "LIRISYNC_SEPARATOR_DIR"
 MODEL = "sep-all-int8.onnx"
@@ -78,13 +78,13 @@ def session(separator_dir: Path, vocals_path: Path) -> WorkerRun:
         "output": str(vocals_path),
         "model": str(separator_dir / MODEL),
     }
-    return _run_worker(
-        _request("separate", "p1", params) + _request("shutdown", "s1"), timeout=SLOW_RUN_SECONDS
+    return run_worker(
+        request("separate", "p1", params) + request("shutdown", "s1"), timeout=SLOW_RUN_SECONDS
     )
 
 
 def test_every_message_is_a_schema_valid_response(session: WorkerRun) -> None:
-    assert all(_is_valid("Response", m) for m in session.messages)
+    assert all(is_valid("Response", m) for m in session.messages)
 
 
 def test_the_worker_ends_with_a_separate_result(session: WorkerRun) -> None:

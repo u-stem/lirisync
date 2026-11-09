@@ -160,7 +160,7 @@
       "additionalProperties": false
     },
     "SeparateParams": {
-      "description": "Extract the vocals of an audio file into a WAV file. Paths are absolute or relative to the worker's working directory; which paths are allowed is the host's decision. The worker only checks that output ends with .wav (any case), has an existing parent directory, and differs from input. Progress is reported with stage 'separate'.",
+      "description": "Extract the vocals of an audio file into a WAV file. Paths are absolute or relative to the worker's working directory; which paths are allowed is the host's decision. The worker only checks that input, if it exists, is a regular file (not a directory or a FIFO); that output ends with .wav (any case), has an existing parent directory, is not a directory, and is not the input file (including a hard link or, on a case-insensitive file system, a case variant). A failed request leaves no output and no temporary file. If the worker process itself dies mid-write, a temporary file named .lirisync-<hex>.tmp.wav may remain in the output directory. Progress is reported with stage 'separate'.",
       "type": "object",
       "properties": {
         "input": {
