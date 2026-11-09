@@ -109,7 +109,10 @@
       "properties": {
         "startMs": { "type": "integer", "minimum": 0 },
         "endMs": { "type": "integer", "minimum": 0 },
-        "text": { "type": "string" }
+        "text": {
+          "description": "The ASR's text for this word, verbatim. Concatenating the texts in order must give the transcript, so keep the spaces the ASR puts between words (Whisper starts an English word with one). A word may be a fragment of a longer word.",
+          "type": "string"
+        }
       },
       "required": ["startMs", "endMs", "text"],
       "additionalProperties": false
