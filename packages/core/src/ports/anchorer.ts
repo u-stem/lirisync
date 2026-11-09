@@ -1,6 +1,10 @@
 import type { Ms } from "../domain/time";
 
-/** One word heard by the ASR. `end` is not before `start`. */
+/**
+ * One word heard by the ASR. `end` is not before `start`. `text` is the
+ * ASR's output verbatim, spaces included: the texts joined in order are the
+ * transcript, and a word may be a fragment of a longer word.
+ */
 export type AsrWord = { start: Ms; end: Ms; text: string };
 
 export type AnchorRequest = {

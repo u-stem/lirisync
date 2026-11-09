@@ -15,6 +15,12 @@ def test_split_asr_words_are_read_in_context(reader: SudachiReader) -> None:
     assert result == "うんめい"
 
 
+def test_english_fragments_with_asr_spaces_are_read_as_words(reader: SudachiReader) -> None:
+    texts = [" de", "mo", " line"]
+    result = "".join(ch for ch, _ in reading_chars(texts, reader, frozenset()))
+    assert result == "でもらいん"
+
+
 def test_a_kanji_line_is_placed_on_kana_asr_words(reader: SudachiReader) -> None:
     words = [
         Word(start=1200, end=1500, text="きみを"),

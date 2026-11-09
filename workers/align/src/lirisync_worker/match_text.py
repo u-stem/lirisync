@@ -209,6 +209,11 @@ def reading_chars(
     命 read alone is いのち. Reading the joined text keeps the dictionary's
     context; a token that spans several texts hands out its reading in
     proportion to the characters each text contributed.
+
+    The texts are joined with nothing in between, so they must keep the ASR's
+    own spaces. In Japanese, Whisper splits an English word into fragments
+    (" beaut", "iful") and marks the word boundary only by the leading space;
+    adding a separator here would break the word apart.
     """
     normalized = [
         expand_iteration_marks(unicodedata.normalize("NFKC", t), kanji=False) for t in texts
