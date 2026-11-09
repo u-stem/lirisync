@@ -57,14 +57,22 @@ export function parseAudacityLabels(text: string): TruthLine[] {
 }
 
 /**
+ * Splits `lyrics.txt` into its lines. A final newline ends the last line; it
+ * does not start an empty one.
+ */
+export function splitLyricsLines(lyrics: string): string[] {
+  const lines = lyrics.split(/\r?\n/);
+  if (lines.at(-1) === "") lines.pop();
+  return lines;
+}
+
+/**
  * Checks that every label points at a non-blank line of `lyrics.txt`. A label
  * on a missing or blank line can never be predicted, so it would silently
  * lower the match rate instead of failing.
  */
 export function assertLabelsSung(labels: TruthLine[], lyrics: string): void {
-  const lines = lyrics.split(/\r?\n/);
-  // A final newline ends the last line; it does not start an empty one.
-  if (lines.at(-1) === "") lines.pop();
+  const lines = splitLyricsLines(lyrics);
   for (const { line } of labels) {
     const text = lines[line - 1];
     if (text === undefined) {

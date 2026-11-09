@@ -11,6 +11,7 @@
     "format": "biome check --write .",
     "typecheck": "bun run --filter '*' typecheck && tsc -p scripts",
     "test": "bun test",
+    "eval": "bun eval/run.ts",
     "licenses": "bun scripts/licenses/check-npm.ts"
   },
   "devDependencies": {

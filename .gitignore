@@ -20,6 +20,7 @@ target/
 # Evaluation inputs (copyrighted audio and lyrics stay local)
 eval/songs/*/audio/
 eval/songs/*/lyrics.txt
+eval/songs/*/asr/
 
 # OS / editor
 .DS_Store
