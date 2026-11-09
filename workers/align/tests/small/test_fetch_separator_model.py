@@ -1,4 +1,5 @@
 import hashlib
+import re
 from contextlib import AbstractContextManager, nullcontext
 from http.client import IncompleteRead
 from io import BytesIO
@@ -164,7 +165,13 @@ def test_an_unknown_file_name_is_rejected() -> None:
 
 
 def test_every_pinned_hash_is_a_sha256_hex_digest() -> None:
-    assert all(len(h) == 64 and int(h, 16) >= 0 for h in fetch.PINNED_SHA256.values())
+    assert all(re.fullmatch(r"[0-9a-f]{64}", h) for h in fetch.PINNED_SHA256.values())
+
+
+def test_the_fp16_flag_adds_the_fp16_files_to_named_files() -> None:
+    chosen = fetch.select_files(["ref-input.f32"], with_fp16=True)
+
+    assert chosen == ["ref-input.f32", *fetch.FP16_FILES]
 
 
 def test_a_body_shorter_than_content_length_is_reported_as_truncated(tmp_path: Path) -> None:

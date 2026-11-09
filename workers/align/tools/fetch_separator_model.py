@@ -77,9 +77,9 @@ def sha256_of(path: Path) -> str:
 
 
 def select_files(names: Sequence[str] | None, *, with_fp16: bool) -> list[str]:
-    """The files to fetch: `names` if given, else the defaults (plus fp16 on request)."""
-    defaults = [*DEFAULT_FILES, *(FP16_FILES if with_fp16 else ())]
-    chosen = defaults if names is None else list(names)
+    """The files to fetch: `names` if given, else the defaults; plus fp16 on request."""
+    extra = FP16_FILES if with_fp16 else ()
+    chosen = [*DEFAULT_FILES, *extra] if names is None else [*names, *extra]
     unknown = [name for name in chosen if name not in PINNED_SHA256]
     if unknown:
         raise ValueError(f"unknown file(s) {unknown}; known: {sorted(PINNED_SHA256)}")
