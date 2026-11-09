@@ -192,6 +192,15 @@ def license_texts(dist: Distribution) -> Iterable[str]:
             yield text
 
 
+def override_for(overrides: dict[str, str], name: str, version: str) -> str | None:
+    """The license recorded for ``name``: ``pypi:<name>==<version>`` first, then ``pypi:<name>``.
+
+    A version-pinned entry stops applying when the package is upgraded, so the
+    check fails until the new version's license has been read again.
+    """
+    return overrides.get(f"pypi:{name}=={version}") or overrides.get(f"pypi:{name}")
+
+
 def _normalize(name: str) -> str:
     return re.sub(r"[-_.]+", "-", name).lower()
 
@@ -230,7 +239,7 @@ def main() -> int:
             continue
         checked += 1
         metadata = dist.metadata
-        found = overrides.get(f"pypi:{name}") or license_of(metadata)
+        found = override_for(overrides, name, dist.version) or license_of(metadata)
         # Exceptions are for bundled runtimes, not for a package's own license.
         if found is None or not is_allowed_expression(found, allowed):
             failures.append(f"{name}=={dist.version}: {found!r}")

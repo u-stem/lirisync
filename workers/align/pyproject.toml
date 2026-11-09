@@ -8,6 +8,7 @@ description = "Lirisync alignment worker: speaks a line-delimited JSON protocol 
 requires-python = ">=3.12,<3.15"
 dependencies = [
   "numpy>=2.5,<3",
+  "onnxruntime>=1.31,<2",
   "pydantic>=2.12,<3",
   "sudachidict-core>=20261015",
   "sudachipy>=0.7,<0.8",
@@ -60,6 +61,13 @@ python_version = "3.12"
 # plain `from .sudachipy import ...`, which strict mode does not count as export.
 [[tool.mypy.overrides]]
 module = ["sudachipy", "sudachipy.*"]
+follow_untyped_imports = true
+implicit_reexport = true
+
+# onnxruntime ships no py.typed marker; read its sources so the session
+# class is typed instead of Any. Its __init__ re-exports with plain imports.
+[[tool.mypy.overrides]]
+module = ["onnxruntime", "onnxruntime.*"]
 follow_untyped_imports = true
 implicit_reexport = true
 

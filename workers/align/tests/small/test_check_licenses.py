@@ -12,6 +12,7 @@ from check_licenses import (
     is_allowed_expression,
     license_of,
     license_texts,
+    override_for,
     split_bundled,
 )
 
@@ -233,3 +234,27 @@ def test_license_files_fall_back_to_the_dist_info_root() -> None:
 def test_url_line_ends_the_entry() -> None:
     text = "Name: libfoo\nhttps://example.org/libfoo\nLicense: GPL-3.0-only\n"
     assert bundled_licenses(text) == [("libfoo", "")]
+
+
+def test_override_for_the_pinned_version_applies() -> None:
+    assert override_for({"pypi:protobuf==7.36.2": "BSD-3-Clause"}, "protobuf", "7.36.2") == (
+        "BSD-3-Clause"
+    )
+
+
+def test_override_for_another_version_does_not_apply() -> None:
+    assert override_for({"pypi:protobuf==7.36.2": "BSD-3-Clause"}, "protobuf", "7.37.0") is None
+
+
+def test_unpinned_override_applies_to_any_version() -> None:
+    assert override_for({"pypi:protobuf": "BSD-3-Clause"}, "protobuf", "7.37.0") == "BSD-3-Clause"
+
+
+def test_pinned_override_wins_over_the_unpinned_one() -> None:
+    overrides = {"pypi:protobuf": "MIT", "pypi:protobuf==7.36.2": "BSD-3-Clause"}
+
+    assert override_for(overrides, "protobuf", "7.36.2") == "BSD-3-Clause"
+
+
+def test_override_for_another_package_does_not_apply() -> None:
+    assert override_for({"pypi:protobuf==7.36.2": "BSD-3-Clause"}, "numpy", "7.36.2") is None
