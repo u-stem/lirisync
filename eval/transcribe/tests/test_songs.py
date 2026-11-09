@@ -62,6 +62,13 @@ def test_find_audio_returns_the_single_matching_file(tmp_path: Path) -> None:
     assert find_audio(tmp_path, "vocals") == tmp_path / "audio" / "vocals.wav"
 
 
+def test_find_audio_ignores_the_case_of_the_stem(tmp_path: Path) -> None:
+    (tmp_path / "audio").mkdir()
+    (tmp_path / "audio" / "Vocals.wav").write_bytes(b"")
+
+    assert find_audio(tmp_path, "vocals") == tmp_path / "audio" / "Vocals.wav"
+
+
 def test_find_audio_does_not_match_a_longer_stem(tmp_path: Path) -> None:
     (tmp_path / "audio").mkdir()
     (tmp_path / "audio" / "vocals_old.wav").write_bytes(b"")
@@ -97,6 +104,13 @@ def test_write_asr_writes_the_words_file_in_the_eval_format(tmp_path: Path) -> N
     write_asr(tmp_path, "tiny", WORDS, META, overwrite=False)
 
     assert json.loads((tmp_path / "asr" / "tiny.json").read_text("utf-8")) == {"words": WORDS}
+
+
+@pytest.mark.parametrize("file_name", ["tiny.json", "tiny.meta.json"])
+def test_write_asr_ends_lines_with_lf_on_every_os(tmp_path: Path, file_name: str) -> None:
+    write_asr(tmp_path, "tiny", WORDS, META, overwrite=False)
+
+    assert b"\r\n" not in (tmp_path / "asr" / file_name).read_bytes()
 
 
 def test_write_asr_keeps_non_ascii_text_readable(tmp_path: Path) -> None:

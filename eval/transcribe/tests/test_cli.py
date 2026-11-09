@@ -286,6 +286,33 @@ def test_main_keeps_stdout_empty(tmp_path: Path, capsys: pytest.CaptureFixture[s
     assert capsys.readouterr().out == ""
 
 
+class ExplodingSegments:
+    """Segments that fail on first use, as faster-whisper's lazy decoding can."""
+
+    def __iter__(self) -> "ExplodingSegments":
+        return self
+
+    def __next__(self) -> FakeSegment:
+        raise RuntimeError("out of memory")
+
+
+@dataclass
+class ExplodingModel(FakeModel):
+    def transcribe(self, audio: str, **kwargs: object) -> tuple[Iterable[FakeSegment], object]:
+        return ExplodingSegments(), None
+
+
+def test_main_names_the_song_when_transcription_fails(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    make_song(tmp_path, "a")
+    argv = ["--songs-dir", str(tmp_path), "--model", "tiny", "--name", "t1"]
+
+    main(argv, load_model=Loader(ExplodingModel([])))
+
+    assert 'error: Song "a": RuntimeError: out of memory\n' in capsys.readouterr().err
+
+
 def test_main_fails_on_an_unknown_song_before_loading_the_model(tmp_path: Path) -> None:
     make_song(tmp_path, "a")
 

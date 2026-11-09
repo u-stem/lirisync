@@ -39,10 +39,13 @@ def list_songs(songs_dir: Path) -> list[Path]:
 
 
 def find_audio(song_dir: Path, stem: str) -> Path:
-    """The one file ``audio/<stem>.<ext>`` of a song."""
+    """The one file ``audio/<stem>.<ext>`` of a song. The stem is compared
+    without case, as Windows file names are."""
     audio_dir = song_dir / "audio"
     candidates = (
-        sorted(p for p in audio_dir.glob("*") if p.is_file() and p.stem == stem)
+        sorted(
+            p for p in audio_dir.glob("*") if p.is_file() and p.stem.casefold() == stem.casefold()
+        )
         if audio_dir.is_dir()
         else []
     )
@@ -90,12 +93,12 @@ def write_asr(
     asr_dir.mkdir(parents=True, exist_ok=True)
     words_path = asr_dir / f"{name}.json"
     words_path.unlink(missing_ok=True)
-    (asr_dir / f"{name}.meta.json").write_text(_dump(dict(meta)), encoding="utf-8")
+    (asr_dir / f"{name}.meta.json").write_text(_dump(dict(meta)), encoding="utf-8", newline="\n")
     # Serialise before opening: opening for writing would create an empty file
     # that looks finished if serialising failed.
     text = _dump({"words": list(words)})
     try:
-        with words_path.open("x", encoding="utf-8") as file:
+        with words_path.open("x", encoding="utf-8", newline="\n") as file:
             file.write(text)
     except FileExistsError:
         raise SongSetError(f"{words_path} already exists; pass --overwrite to replace it") from None

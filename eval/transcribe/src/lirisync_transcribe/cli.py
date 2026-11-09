@@ -175,7 +175,8 @@ def _select_songs(options: Options) -> list[Path]:
         if slug not in by_slug:
             raise SongSetError(f'Unknown song "{slug}" under {options.songs_dir}')
     # Keep the sorted order and drop duplicates given on the command line.
-    return [song for song in songs if song.name in set(options.songs)]
+    wanted = set(options.songs)
+    return [song for song in songs if song.name in wanted]
 
 
 def _run(options: Options, load_model: Callable[[Options], Transcriber]) -> None:
@@ -217,6 +218,10 @@ def _run(options: Options, load_model: Callable[[Options], Transcriber]) -> None
             result = asr_words([word for segment in segments for word in segment.words or ()])
         except ValueError as error:
             raise SongSetError(f'Song "{song.name}": {error}') from error
+        except Exception as error:
+            # Segments decode lazily, so model failures (e.g. CUDA errors) surface
+            # here; name the song so the user knows where to resume.
+            raise SongSetError(f'Song "{song.name}": {type(error).__name__}: {error}') from error
         write_asr(
             song,
             options.name,

@@ -75,7 +75,7 @@ uv --directory eval/transcribe run lirisync-transcribe --model Systran/faster-wh
 | `--name <name>` | 書き出す名前（`asr/<name>.json`）。必須。使える文字は `bun run eval --asr` と同じ |
 | `--songs-dir <path>` | 曲のディレクトリ。既定は `../songs`。`uv --directory eval/transcribe` は `eval/transcribe` で動くため、既定でこのリポジトリの `eval/songs` を指します |
 | `--song <slug>` | 書き起こす曲を絞ります。繰り返して複数指定できます。存在しない slug はエラーです |
-| `--audio <stem>` | 使う音声ファイルの名前（拡張子なし）。既定は `vocals` |
+| `--audio <stem>` | 使う音声ファイルの名前（拡張子なし、大文字と小文字は区別しない）。既定は `vocals` |
 | `--device <device>` | `auto`、`cpu`、`cuda`。既定は `auto` |
 | `--compute-type <type>` | CTranslate2 の計算型。既定は `default` |
 | `--beam-size <n>` | ビームの幅。1 以上の整数。既定は 5 |
