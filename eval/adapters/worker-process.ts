@@ -1,3 +1,4 @@
+import { join } from "node:path";
 import { handshake, WorkerClient } from "./worker-client";
 import type { HelloResult } from "./worker-protocol";
 
@@ -19,6 +20,17 @@ export type StartWorkerOptions = {
    */
   shutdownTimeoutMs?: number;
 };
+
+/** The command that runs the alignment worker from the repository at `repoRoot`. */
+export function alignWorkerCommand(repoRoot: string): string[] {
+  return [
+    "uv",
+    "--directory",
+    join(repoRoot, "workers", "align"),
+    "run",
+    "lirisync-worker",
+  ];
+}
 
 const DEFAULT_SHUTDOWN_TIMEOUT_MS = 10_000;
 

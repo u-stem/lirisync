@@ -57,11 +57,49 @@ Audacity のラベルで付け、「ラベルを書き出す」で `labels.txt` 
 - 上記以外のフィールドはエラーにします
 - `text` は書き起こしの出力のまま入れます。Whisper は英単語の先頭に空白を付けます（`" line"`）。この空白を消すと、英語の行が一致しなくなります
 
+## ボーカルを分離する
+
+`lirisync-transcribe` はボーカルだけの音声を読みます。ワーカーの `separate` メソッドで、ミックスの音源からボーカルを取り出せます。外部の分離ツールは要りません。
+
+1. 各曲のミックスを `audio/mix.*` に置きます（拡張子は何でも、1 曲に 1 つ）
+2. 分離モデルを取得します
+
+   ```sh
+   uv --directory workers/align run python tools/fetch_separator_model.py --dest <dir>
+   ```
+
+3. 分離します
+
+   ```sh
+   bun run eval:separate --model <dir>/sep-all-int8.onnx
+   ```
+
+各曲の `audio/mix.*` から `audio/vocals.wav` を作ります。書き出す形式は 44.1 kHz、2 チャンネルの WAV です。ワーカーは一時ファイルに書いてから置き換えるので、途中で止まっても壊れた `vocals.wav` は残りません。
+
+デコードに ffmpeg を使います。`PATH` に置くか、環境変数 `LIRISYNC_FFMPEG` でパスを指定してください。推論は今のところ CPU だけです。Mac の CPU では、曲の長さの約 2 倍の時間がかかりました（20 秒の音声で約 40 秒）。
+
+| オプション | 内容 |
+| --- | --- |
+| `--model <path>` | 分離モデルの ONNX ファイル。必須 |
+| `--songs-dir <path>` | 曲のディレクトリ。既定は `eval/songs` |
+| `--song <slug>` | 分離する曲を絞ります。繰り返して複数指定できます。存在しない slug はエラーです |
+| `--input <stem>` | 元にする音声ファイルの名前（拡張子なし、大文字と小文字は区別しない）。既定は `mix`。`vocals` は出力の名前なので指定できません |
+| `--overwrite` | 既にある `audio/vocals.wav` を置き換えます。付けないと、あるときはエラーです |
+| `--skip-existing` | 既にボーカルのある曲を飛ばします。`--overwrite` とは同時に使えません |
+
+- 既存のボーカルは、`audio/` にある名前（最後の拡張子を除く）が `vocals` のファイルです（大文字と小文字は区別しません）。`lirisync-transcribe` が選ぶファイルと同じ基準です。`vocals.meta.json` の名前は `vocals.meta` なので数えません
+- `--skip-existing` なら、拡張子に関わらず既存のボーカルがある曲を飛ばします（その曲のミックスは見ません）
+- それ以外で、既存のボーカルが `.wav` でないとき、または複数あるときは、`--overwrite` を付けてもエラーです。利用者のファイルは消さず、`vocals.wav` を並べて置くと書き起こしの側が 2 つ見つけてしまうためです。先に移してください
+- 既存の `vocals.wav` があって `--overwrite` がないときはエラーです。`--overwrite` では、そのファイルの実際の名前（`Vocals.WAV` など）に書いて置き換えます
+- モデルの存在、各曲のミックスが 1 つだけあること、上の衝突は、ワーカーを起動する前に全曲分を確かめます。そのあとでモデルの SHA-256 を計算します（約 240 MB）
+- 曲ごとに `audio/vocals.meta.json` も書きます。キーは camelCase で、元にしたファイル名（`input`）、モデルのファイル名（`model`）とその SHA-256（`modelSha256`）、ワーカーの版（`worker`）を記録します。`vocals.wav` を書く前に書くので、`vocals.wav` があれば分離が終わったものとみなせます。`--overwrite` では、メタ情報を書く前に古い `vocals.wav` を消します。分離が途中で失敗しても、新しいメタ情報と古い音声が並んで残らないようにするためです
+- 進捗は標準エラー出力に `[n/N] <slug>: NN% (eta m:ss)` の形で出ます。端末では同じ行を上書きし、端末でないとき（ログなど）は 10 % ごとに 1 行出します。失敗したときは `error: ...` を出して終了コード 1 で終わります。途中で失敗したときは、同じコマンドに `--skip-existing` を付けて再実行すると、終えた曲を飛ばして続きから進めます
+
 ## 書き起こしを作る（Windows 機）
 
 `asr/<name>.json` は、評価専用のツール `eval/transcribe` が faster-whisper で作ります。配布版やワーカーには入れません（faster-whisper が PyAV 経由で FFmpeg を、GPU では NVIDIA の CUDA ライブラリを要求し、配布のライセンス方針に合わないため。詳しくは `docs/dependencies.md`）。
 
-各曲の `audio/vocals.*` を書き起こします。`audio/` には、`vocals` という名前（拡張子は何でも）のファイルを 1 曲に 1 つだけ置きます。ボーカルを分離していない音源を使うときは、`audio/mix.*` のように別の名前で置き、`--audio mix` を付けます。
+各曲の `audio/vocals.*` を書き起こします。`audio/vocals.wav` は「ボーカルを分離する」の手順で作れます。別のツールで分離した `vocals.*` も使えます。`audio/` には、`vocals` という名前（拡張子は何でも）のファイルを 1 曲に 1 つだけ置きます。ボーカルを分離していない音源を使うときは、`audio/mix.*` のように別の名前で置き、`--audio mix` を付けます。
 
 ```sh
 uv --directory eval/transcribe run lirisync-transcribe --model Systran/faster-whisper-large-v3 --name large-v3

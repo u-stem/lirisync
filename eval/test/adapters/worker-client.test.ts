@@ -106,6 +106,135 @@ describe("WorkerClient", () => {
     expect(result).toEqual({ done: 1 });
   });
 
+  describe("progress", () => {
+    function progressLine(id: string, ratio: number, etaMs: number | null) {
+      return protocolLine({ id, type: "progress", stage: "s", ratio, etaMs });
+    }
+
+    test("hands the ratio to the callback", async () => {
+      const worker = fakeWorker((r) => [
+        progressLine(r.id, 0.25, 3000),
+        resultFor(r),
+      ]);
+      const client = new WorkerClient(worker.io);
+      const ratios: number[] = [];
+      await client.request(
+        "separate",
+        {},
+        { onProgress: (p) => ratios.push(p.ratio) },
+      );
+      expect(ratios).toEqual([0.25]);
+    });
+
+    test("hands the eta to the callback", async () => {
+      const worker = fakeWorker((r) => [
+        progressLine(r.id, 0.25, 3000),
+        resultFor(r),
+      ]);
+      const client = new WorkerClient(worker.io);
+      const etas: (number | null)[] = [];
+      await client.request(
+        "separate",
+        {},
+        { onProgress: (p) => etas.push(p.etaMs) },
+      );
+      expect(etas).toEqual([3000]);
+    });
+
+    test("does not call the callback for another request's progress", async () => {
+      const worker = fakeWorker((r) => {
+        if (r.method === "slow") return [];
+        return [progressLine("1", 0.5, null), resultFor(r)];
+      });
+      const client = new WorkerClient(worker.io);
+      const calls: number[] = [];
+      void client.request("slow", {}).catch(() => {});
+      await client.request(
+        "fast",
+        {},
+        { onProgress: (p) => calls.push(p.ratio) },
+      );
+      expect(calls).toEqual([]);
+    });
+
+    test("still resolves a request without a callback", async () => {
+      const worker = fakeWorker((r) => [
+        progressLine(r.id, 0.5, null),
+        resultFor(r, { done: 1 }),
+      ]);
+      const client = new WorkerClient(worker.io);
+      expect(await client.request("separate", {})).toEqual({ done: 1 });
+    });
+
+    test("still rejects progress for an unknown id", async () => {
+      const worker = fakeWorker(() => [progressLine("99", 0, null)]);
+      const client = new WorkerClient(worker.io);
+      const outcome = client.request("hello", {}, { onProgress: () => {} });
+      await expect(outcome).rejects.toBeInstanceOf(WorkerProtocolError);
+    });
+
+    test("rejects the request with the error a callback throws", async () => {
+      const worker = fakeWorker((r) => [
+        progressLine(r.id, 0.5, null),
+        resultFor(r),
+      ]);
+      const client = new WorkerClient(worker.io);
+      const outcome = client.request(
+        "separate",
+        {},
+        {
+          onProgress: () => {
+            throw new Error("terminal closed");
+          },
+        },
+      );
+      await expect(outcome).rejects.toThrow("terminal closed");
+    });
+
+    test("keeps working for later requests after a callback threw", async () => {
+      const worker = fakeWorker((r) => [
+        progressLine(r.id, 0.5, null),
+        resultFor(r, { n: r.id }),
+      ]);
+      const client = new WorkerClient(worker.io);
+      await client
+        .request(
+          "separate",
+          {},
+          {
+            onProgress: () => {
+              throw new Error("terminal closed");
+            },
+          },
+        )
+        .catch(() => {});
+      expect(await client.request("hello", {})).toEqual({ n: "2" });
+    });
+
+    test("stops calling a callback that threw", async () => {
+      const worker = fakeWorker((r) => [
+        progressLine(r.id, 0.1, null),
+        progressLine(r.id, 0.2, null),
+        resultFor(r),
+      ]);
+      const client = new WorkerClient(worker.io);
+      let calls = 0;
+      await client
+        .request(
+          "separate",
+          {},
+          {
+            onProgress: () => {
+              calls += 1;
+              throw new Error("terminal closed");
+            },
+          },
+        )
+        .catch(() => {});
+      expect(calls).toBe(1);
+    });
+  });
+
   test("reads a line split across chunks", async () => {
     const worker = fakeWorker((r) => {
       const whole = resultFor(r, { split: true });

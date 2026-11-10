@@ -1,12 +1,25 @@
 import { describe, expect, test } from "bun:test";
+import { join } from "node:path";
 import { WorkerProtocolError } from "../../adapters/worker-client";
-import { startWorker } from "../../adapters/worker-process";
+import { alignWorkerCommand, startWorker } from "../../adapters/worker-process";
 
 const FAKE_WORKER = `${import.meta.dir}/fixtures/fake-worker.ts`;
 
 function fake(mode: string): string[] {
   return [process.execPath, FAKE_WORKER, mode];
 }
+
+describe("alignWorkerCommand", () => {
+  test("runs the worker through uv in workers/align", () => {
+    expect(alignWorkerCommand("/repo")).toEqual([
+      "uv",
+      "--directory",
+      join("/repo", "workers", "align"),
+      "run",
+      "lirisync-worker",
+    ]);
+  });
+});
 
 describe("startWorker", () => {
   test("returns the worker's hello", async () => {

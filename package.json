@@ -12,6 +12,7 @@
     "typecheck": "bun run --filter '*' typecheck && tsc -p scripts",
     "test": "bun test",
     "eval": "bun eval/run.ts",
+    "eval:separate": "bun eval/separate.ts",
     "licenses": "bun scripts/licenses/check-npm.ts"
   },
   "devDependencies": {

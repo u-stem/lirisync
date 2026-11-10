@@ -3,10 +3,16 @@ import { dirname, join, resolve } from "node:path";
 import { parseArgs } from "node:util";
 import type { AnchoredLine } from "@lirisync/core";
 import { WorkerAnchorer } from "./adapters/worker-anchorer";
-import { startWorker } from "./adapters/worker-process";
+import { alignWorkerCommand, startWorker } from "./adapters/worker-process";
 import { assertLabeledLinesSung, toPredictions } from "./src/predictions";
 import { buildReport, formatReport, type SongResult } from "./src/report";
-import { assertAsrName, listSongs, loadSong, type Song } from "./src/song-set";
+import {
+  assertAsrName,
+  listSongs,
+  loadSong,
+  type Song,
+  selectSongs,
+} from "./src/song-set";
 
 const repoRoot = resolve(import.meta.dir, "..");
 
@@ -29,14 +35,7 @@ async function main(): Promise<void> {
   }
   assertAsrName(asr);
   const songsDir = resolve(values["songs-dir"]);
-  const available = await listSongs(songsDir);
-  const wanted = values.song ?? available;
-  for (const slug of wanted) {
-    if (!available.includes(slug)) {
-      throw new Error(`Unknown song ${JSON.stringify(slug)}`);
-    }
-  }
-  const slugs = available.filter((slug) => wanted.includes(slug));
+  const slugs = selectSongs(await listSongs(songsDir), values.song);
 
   // Load everything before starting the worker, so a bad file fails fast.
   const songs: Song[] = [];
@@ -44,16 +43,7 @@ async function main(): Promise<void> {
     songs.push(await loadSong(songsDir, slug, asr));
   }
 
-  const worker = await startWorker(
-    [
-      "uv",
-      "--directory",
-      join(repoRoot, "workers", "align"),
-      "run",
-      "lirisync-worker",
-    ],
-    ["anchor"],
-  );
+  const worker = await startWorker(alignWorkerCommand(repoRoot), ["anchor"]);
   const results: SongResult[] = [];
   try {
     const anchorer = new WorkerAnchorer(worker.client);

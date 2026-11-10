@@ -42,13 +42,14 @@ export const Request = z.strictObject({
   params: JsonObject,
 });
 
-const Progress = z.strictObject({
+export const Progress = z.strictObject({
   id: RequestId,
   type: z.literal("progress"),
   stage: z.string().min(1),
   ratio: z.number().min(0).max(1),
   etaMs: Ms.nullable(),
 });
+export type Progress = z.infer<typeof Progress>;
 
 const Result = z.strictObject({
   id: RequestId,

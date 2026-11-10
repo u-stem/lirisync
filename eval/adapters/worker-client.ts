@@ -3,6 +3,7 @@ import {
   HelloResult,
   PROTOCOL_PREFIX,
   PROTOCOL_VERSION,
+  type Progress,
   Response,
 } from "./worker-protocol";
 
@@ -36,9 +37,17 @@ export type WorkerClientOptions = {
   onLog?: (line: string) => void;
 };
 
+export type RequestOptions = {
+  /** Called with each progress message of this request. */
+  onProgress?: (progress: Progress) => void;
+};
+
 type Pending = {
   resolve: (result: Record<string, unknown>) => void;
   reject: (error: Error) => void;
+  onProgress: ((progress: Progress) => void) | undefined;
+  /** What `onProgress` threw first; the request fails with it when it ends. */
+  callbackError: Error | null;
 };
 
 async function* readLines(
@@ -86,12 +95,18 @@ export class WorkerClient {
   request(
     method: string,
     params: Record<string, unknown>,
+    options: RequestOptions = {},
   ): Promise<Record<string, unknown>> {
     if (this.#failure !== null) return Promise.reject(this.#failure);
     const id = String(this.#nextId);
     this.#nextId += 1;
     const answer = new Promise<Record<string, unknown>>((resolve, reject) => {
-      this.#pending.set(id, { resolve, reject });
+      this.#pending.set(id, {
+        resolve,
+        reject,
+        onProgress: options.onProgress,
+        callbackError: null,
+      });
     });
     const request = { v: PROTOCOL_VERSION, id, method, params };
     try {
@@ -127,11 +142,13 @@ export class WorkerClient {
     }
     const message = this.#parse(line.slice(PROTOCOL_PREFIX.length));
     if (message.type === "progress") {
-      if (!this.#pending.has(message.id)) {
+      const pending = this.#pending.get(message.id);
+      if (pending === undefined) {
         throw new WorkerProtocolError(
           `A progress message names unknown id ${message.id}`,
         );
       }
+      this.#report(pending, message);
       return;
     }
     if (message.type === "error" && message.id === null) {
@@ -140,10 +157,30 @@ export class WorkerClient {
       throw new WorkerError(message.code, message.message);
     }
     const pending = this.#take(message.id);
-    if (message.type === "result") {
+    if (pending.callbackError !== null) {
+      // The worker has finished, so the id is settled and the client stays
+      // usable; the failure is the caller's, not the protocol's.
+      pending.reject(pending.callbackError);
+    } else if (message.type === "result") {
       pending.resolve(message.result);
     } else {
       pending.reject(new WorkerError(message.code, message.message));
+    }
+  }
+
+  /**
+   * A callback that throws must not end the read loop, which every request
+   * shares. The first error is kept and the callback is not called again.
+   */
+  #report(pending: Pending, progress: Progress): void {
+    if (pending.onProgress === undefined || pending.callbackError !== null) {
+      return;
+    }
+    try {
+      pending.onProgress(progress);
+    } catch (error) {
+      pending.callbackError =
+        error instanceof Error ? error : new Error(String(error));
     }
   }
 
