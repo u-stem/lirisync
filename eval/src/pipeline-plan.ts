@@ -36,13 +36,28 @@ export type PipelineStep = {
   args: string[];
 };
 
+/** `value`, unless it is empty: `resolve("")` would quietly be the current directory. */
+function nonEmpty(value: string, message: string): string {
+  if (value === "") throw new Error(message);
+  return value;
+}
+
+/** A given directory made absolute, or `fallback`. */
+function directoryOf(
+  flag: string | undefined,
+  name: string,
+  fallback: string,
+): string {
+  if (flag === undefined) return fallback;
+  return resolve(nonEmpty(flag, `${name} needs a directory`));
+}
+
 function modelsDirOf(
   flag: string | undefined,
   platform: NodeJS.Platform,
 ): string {
   if (flag !== undefined) {
-    if (flag === "") throw new Error("--models-dir needs a directory");
-    return resolve(flag);
+    return resolve(nonEmpty(flag, "--models-dir needs a directory"));
   }
   // The default is a Windows path; resolving it elsewhere would glue it to
   // the current directory.
@@ -60,16 +75,21 @@ export function parsePipelineOptions(
   assertAsrName(asr);
   return {
     modelsDir: modelsDirOf(flags["models-dir"], platform),
-    asrModel: flags["asr-model"] ?? DEFAULT_ASR_MODEL,
+    asrModel: nonEmpty(
+      flags["asr-model"] ?? DEFAULT_ASR_MODEL,
+      "--asr-model needs a model",
+    ),
     asr,
-    outDir:
-      flags["out-dir"] === undefined
-        ? join(repoRoot, "eval", "results")
-        : resolve(flags["out-dir"]),
-    songsDir:
-      flags["songs-dir"] === undefined
-        ? join(repoRoot, "eval", "songs")
-        : resolve(flags["songs-dir"]),
+    outDir: directoryOf(
+      flags["out-dir"],
+      "--out-dir",
+      join(repoRoot, "eval", "results"),
+    ),
+    songsDir: directoryOf(
+      flags["songs-dir"],
+      "--songs-dir",
+      join(repoRoot, "eval", "songs"),
+    ),
     songs: flags.song,
     repoRoot,
   };

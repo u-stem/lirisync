@@ -45,6 +45,24 @@ describe("parsePipelineOptions", () => {
     ).toThrow("--models-dir");
   });
 
+  test("rejects an empty ASR model", () => {
+    expect(() =>
+      parsePipelineOptions({ "asr-model": "" }, "win32", REPO),
+    ).toThrow("--asr-model");
+  });
+
+  test("rejects an empty output directory", () => {
+    expect(() =>
+      parsePipelineOptions({ "out-dir": "" }, "win32", REPO),
+    ).toThrow("--out-dir");
+  });
+
+  test("rejects an empty songs directory", () => {
+    expect(() =>
+      parsePipelineOptions({ "songs-dir": "" }, "win32", REPO),
+    ).toThrow("--songs-dir");
+  });
+
   test("defaults the ASR model", () => {
     const parsed = parsePipelineOptions({}, "win32", REPO);
     expect(parsed.asrModel).toBe("Systran/faster-whisper-large-v3");

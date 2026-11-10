@@ -22,6 +22,12 @@ function log(text: string): void {
 
 /** Checks the inputs of every step, so a wrong path fails before hours of work. */
 async function assertReady(options: PipelineOptions): Promise<void> {
+  // Transcription runs on uv after separation, which takes long; check it now.
+  if (Bun.which("uv") === null) {
+    throw new Error(
+      "uv was not found on PATH. Run scripts/setup-windows.ps1 or install uv (see README.md)",
+    );
+  }
   await assertModelFile(separatorModelPath(options.modelsDir));
   await assertAlignerModelDir(alignerModelDir(options.modelsDir));
   const slugs = await listSongs(options.songsDir).catch((error: unknown) => {
@@ -40,7 +46,9 @@ async function runStep(
   cwd: string,
 ): Promise<void> {
   log(`==> [${index}/${total}] ${step.name}\n`);
-  const child = Bun.spawn([step.command, ...step.args], {
+  // The steps run on the same bun as this command, not whichever is on PATH.
+  const command = step.command === "bun" ? process.execPath : step.command;
+  const child = Bun.spawn([command, ...step.args], {
     cwd,
     stdin: "inherit",
     stdout: "inherit",
