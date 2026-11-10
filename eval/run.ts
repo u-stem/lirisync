@@ -94,6 +94,7 @@ async function main(): Promise<void> {
   const worker = await startWorker(alignWorkerCommand(repoRoot), ["anchor"]);
   const results: SongResult[] = [];
   let perturbation: PerturbationReport | undefined;
+  let perturbationFailure: { error: unknown } | undefined;
   try {
     const anchorer = new WorkerAnchorer(worker.client);
     for (const song of songs) {
@@ -117,7 +118,13 @@ async function main(): Promise<void> {
       });
     }
     if (values.perturb) {
-      perturbation = await runPerturbations(anchorer, songs, results);
+      // A failed perturbation must not cost the baseline report, which is
+      // already computed: it is printed first and the failure rethrown below.
+      try {
+        perturbation = await runPerturbations(anchorer, songs, results);
+      } catch (error) {
+        perturbationFailure = { error };
+      }
     }
   } finally {
     const exitCode = await worker.stop();
@@ -144,6 +151,9 @@ async function main(): Promise<void> {
       ...(perturbation === undefined ? {} : { perturbation }),
     };
     await writeFile(out, `${JSON.stringify(json, null, 2)}\n`);
+  }
+  if (perturbationFailure !== undefined) {
+    throw perturbationFailure.error;
   }
 }
 

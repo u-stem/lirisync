@@ -42,14 +42,12 @@ export type PerturbationReport = {
  * Runs the aligner's first stage on each perturbed version of a song (same
  * words, nothing ignored) and compares it with the baseline. The labeled-lines
  * check is not applied: the lines are mapped, not labeled, in a perturbed run.
- * `onEach` is called after every perturbation, with the number done so far.
  */
 export async function runSongPerturbations(
   anchorer: Anchorer,
   song: Pick<Song, "slug" | "words" | "truth">,
   baseline: Prediction[],
   plan: readonly Perturbation[],
-  onEach?: (done: number) => void,
 ): Promise<PerturbationRecord[]> {
   const records: PerturbationRecord[] = [];
   for (const perturbation of plan) {
@@ -73,7 +71,6 @@ export async function runSongPerturbations(
       span,
       ...perturbationOutcome(song.truth, baseline, perturbation, perturbed),
     });
-    onEach?.(records.length);
   }
   return records;
 }
