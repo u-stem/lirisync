@@ -179,12 +179,20 @@ def test_decoding_to_mono_keeps_the_sample_order(
     ]
 
 
-def test_decoding_drops_a_trailing_partial_frame_of_the_requested_layout(
+def test_decoding_drops_a_trailing_partial_frame_of_the_default_layout(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     _fake(monkeypatch, stdout=np.zeros(5, dtype="<f4").tobytes())
 
     assert decode_audio(tmp_path / "song.mp3").shape == (2, 2)
+
+
+def test_decoding_drops_a_trailing_partial_frame_of_the_requested_layout(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _fake(monkeypatch, stdout=np.zeros(7, dtype="<f4").tobytes())
+
+    assert decode_audio(tmp_path / "song.mp3", sample_rate=16000, channels=3).shape == (3, 2)
 
 
 def test_decoding_defaults_to_44100_hz_stereo(

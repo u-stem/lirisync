@@ -50,6 +50,7 @@ def _read(text: str) -> Iterable[Token]:
 def messages(tmp_path_factory: pytest.TempPathFactory) -> list[dict[str, object]]:
     directory = tmp_path_factory.mktemp("refine-protocol")
     (directory / "model.int8.onnx").write_bytes(b"x")
+    (directory / "vocab.json").write_text("{}")
     params = {
         "audio": str(directory / "vocals.wav"),
         "model": str(directory),

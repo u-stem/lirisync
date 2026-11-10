@@ -8,7 +8,7 @@ import numpy as np
 import numpy.typing as npt
 import pytest
 
-from lirisync_worker.ctc_align import TokenSpan
+from lirisync_worker.ctc_align import CtcAlignmentError, TokenSpan
 from lirisync_worker.ctc_model import (
     BLANK,
     FRAME_SAMPLES,
@@ -437,6 +437,18 @@ def test_a_window_with_no_room_for_the_blank_between_equal_characters_is_too_sho
     assert _refine("ああ", window=Window(1000, 1045), model=UniformModel()).status == "too_short"
 
 
+class NarrowModel(UniformModel):
+    """Returns fewer columns than the vocabulary has ids: a model and vocab that do not match."""
+
+    def log_probs(self, audio: Audio) -> LogProbs:
+        return super().log_probs(audio)[:, :1]
+
+
+def test_a_model_that_does_not_match_its_vocabulary_is_an_error_not_too_short() -> None:
+    with pytest.raises(CtcAlignmentError):
+        _refine(model=NarrowModel())
+
+
 def test_a_too_short_line_reports_no_times() -> None:
     result = _refine(window=Window(1000, 1020), model=UniformModel())
 
@@ -475,6 +487,7 @@ class _Run:
         self.model_dir = tmp_path / "aligner"
         self.model_dir.mkdir()
         (self.model_dir / "model.int8.onnx").write_bytes(b"x")
+        (self.model_dir / "vocab.json").write_text("{}")
         self.audio = tmp_path / "vocals.wav"
         self.session = Session(registry=Registry())
         self.session.progress_sink = lambda stage, ratio, eta: self.progress.append(
@@ -593,6 +606,7 @@ def test_another_model_directory_is_loaded_again(tmp_path: Path) -> None:
     other = tmp_path / "other"
     other.mkdir()
     (other / "model.int8.onnx").write_bytes(b"x")
+    (other / "vocab.json").write_text("{}")
     run.call(model=str(other))
 
     assert len(run.loaded) == 2
@@ -665,6 +679,30 @@ def test_a_model_directory_without_the_model_file_is_model_missing(tmp_path: Pat
     (run.model_dir / "model.int8.onnx").unlink()
 
     assert _code(run) == "model_missing"
+
+
+def test_a_model_directory_without_the_vocabulary_is_model_missing(tmp_path: Path) -> None:
+    run = _Run(tmp_path)
+    (run.model_dir / "vocab.json").unlink()
+
+    assert _code(run) == "model_missing"
+
+
+def test_repeated_requests_load_the_model_once(tmp_path: Path) -> None:
+    run = _Run(tmp_path)
+    run.call()
+    run.call()
+
+    assert len(run.loaded) == 1
+
+
+def test_a_replaced_vocabulary_loads_the_model_again(tmp_path: Path) -> None:
+    run = _Run(tmp_path)
+    run.call()
+    (run.model_dir / "vocab.json").write_text('{"<unk>": 0}')
+    run.call()
+
+    assert len(run.loaded) == 2
 
 
 def test_a_missing_model_directory_is_model_missing(tmp_path: Path) -> None:

@@ -6,7 +6,7 @@ reported as a protocol error instead of a hang or a traceback.
 """
 
 import stat
-from collections.abc import Callable
+from collections.abc import Callable, Hashable
 from pathlib import Path
 
 from lirisync_worker.protocol import ProtocolError
@@ -55,16 +55,17 @@ def first_line(exc: Exception) -> str:
 class LatestModel[M]:
     """Keeps only the most recently used model, so a worker handed many does not pile them up.
 
-    A model is loaded again when another path is used or when its file state
-    (`model_file_state`) changes. `describe` names the path in error messages.
+    A model is loaded again when another path is used or when its state changes:
+    the `model_file_state` of each file the model is read from. `describe` names
+    the path in error messages.
     """
 
     def __init__(self, loader: Callable[[Path], M], describe: Callable[[Path], str]) -> None:
         self._loader = loader
         self._describe = describe
-        self._latest: list[tuple[Path, FileState, M]] = []
+        self._latest: list[tuple[Path, Hashable, M]] = []
 
-    def get(self, path: Path, state: FileState) -> M:
+    def get(self, path: Path, state: Hashable) -> M:
         if self._latest and self._latest[0][:2] == (path, state):
             return self._latest[0][2]
         # Release the previous model before loading the next one, so two are

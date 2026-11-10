@@ -23,6 +23,14 @@ class CtcAlignmentError(ValueError):
     """The input cannot be aligned: malformed, too short, or impossible."""
 
 
+class CtcTooShortError(CtcAlignmentError):
+    """Well-formed input that still cannot be aligned: too few frames, or no path spells the tokens.
+
+    This is an outcome of the audio, not a bug; every other `CtcAlignmentError`
+    means the caller passed malformed input.
+    """
+
+
 @dataclass(frozen=True)
 class TokenSpan:
     start: int  # first frame on this token's (non-blank) state
@@ -63,7 +71,7 @@ def align_ctc(
     token_ids = _validated_tokens(tokens, blank, vocab)
     needed = len(token_ids) + sum(1 for a, b in itertools.pairwise(token_ids) if a == b)
     if frames < needed:
-        raise CtcAlignmentError(f"too few frames: need at least {needed}, got {frames}")
+        raise CtcTooShortError(f"too few frames: need at least {needed}, got {frames}")
 
     states = 2 * len(token_ids) + 1
     labels = np.full(states, blank, dtype=np.intp)
@@ -92,7 +100,7 @@ def align_ctc(
     state = states - 1 if scores[states - 1] >= scores[states - 2] else states - 2
     log_likelihood = float(scores[state])
     if log_likelihood == neg_inf:
-        raise CtcAlignmentError("the token sequence is impossible under these log-probs")
+        raise CtcTooShortError("the token sequence is impossible under these log-probs")
 
     path = np.empty(frames, dtype=np.intp)
     path[frames - 1] = state

@@ -28,13 +28,14 @@ from pydantic import (
 )
 
 from lirisync_worker.audio_io import decode_audio
-from lirisync_worker.ctc_align import CtcAlignmentError, TokenSpan, align_ctc
+from lirisync_worker.ctc_align import CtcTooShortError, TokenSpan, align_ctc
 from lirisync_worker.ctc_model import (
     BLANK,
     FRAME_SAMPLES,
     MIN_SAMPLES,
     MODEL_FILE,
     SAMPLE_RATE,
+    VOCAB_FILE,
     CharCtcModel,
 )
 from lirisync_worker.ctc_tokens import CharVocab, kana_text, surface_text
@@ -189,7 +190,10 @@ def refine_line(
     log_probs = model.log_probs(audio[cut.start : cut.stop])
     try:
         alignment = align_ctc(log_probs, encoded.ids, BLANK)
-    except CtcAlignmentError:
+    except CtcTooShortError:
+        # Any other CtcAlignmentError is a mismatch between the model and its
+        # vocabulary, a bug that must not pass for a short window; it reaches
+        # the server, which reports it as an internal error.
         return RefinedLine("too_short", skipped_chars=skipped)
     return RefinedLine(
         "refined",
@@ -259,8 +263,8 @@ def make_refine(
 
     The reader is made the first time a line is read as kana, and kept. Only the
     most recently used model is kept, as in `separate`: it is loaded again when
-    another directory is used or when the model file's modification time or
-    size changes.
+    another directory is used or when the modification time or size of
+    `model.int8.onnx` or `vocab.json` changes.
     """
     readers: list[Reader] = []
     models = LatestModel(model_loader, lambda directory: f"the model in {directory}")
@@ -270,7 +274,11 @@ def make_refine(
         audio_path = resolve_path(parsed.audio, "audio")
         model_dir = resolve_path(parsed.model, "model")
         check_input_file(audio_path, "audio")
-        model_state = model_file_state(model_dir / MODEL_FILE)
+        # Both files make the model: a replaced vocabulary must not keep the old one.
+        model_state = (
+            model_file_state(model_dir / MODEL_FILE),
+            model_file_state(model_dir / VOCAB_FILE),
+        )
 
         session.progress(STAGE, 0.0, None)
         audio = decoder(audio_path)
