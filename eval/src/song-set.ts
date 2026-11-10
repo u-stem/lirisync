@@ -49,6 +49,23 @@ export async function listSongs(songsDir: string): Promise<string[]> {
 }
 
 /**
+ * The slugs of `available` named in `wanted` (all when `wanted` is undefined),
+ * in the order of `available`. Throws on a slug that is not available.
+ */
+export function selectSongs(
+  available: readonly string[],
+  wanted: readonly string[] | undefined,
+): string[] {
+  const names = wanted ?? available;
+  for (const slug of names) {
+    if (!available.includes(slug)) {
+      throw new Error(`Unknown song ${JSON.stringify(slug)}`);
+    }
+  }
+  return available.filter((slug) => names.includes(slug));
+}
+
+/**
  * Loads one song: `labels.txt`, `lyrics.txt` and `asr/<asrName>.json`. Every
  * failure is rethrown with the slug in front, so a bad file is easy to find
  * when many songs are loaded.

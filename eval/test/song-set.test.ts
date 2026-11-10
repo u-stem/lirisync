@@ -3,7 +3,12 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { parseMs } from "@lirisync/core";
-import { assertAsrName, listSongs, loadSong } from "../src/song-set";
+import {
+  assertAsrName,
+  listSongs,
+  loadSong,
+  selectSongs,
+} from "../src/song-set";
 
 let dir: string;
 
@@ -54,6 +59,24 @@ describe("listSongs", () => {
 
   test("rejects a missing directory", async () => {
     await expect(listSongs(join(dir, "missing"))).rejects.toThrow();
+  });
+});
+
+describe("selectSongs", () => {
+  test("returns every song when none is named", () => {
+    expect(selectSongs(["a", "b"], undefined)).toEqual(["a", "b"]);
+  });
+
+  test("returns the named songs in the order of the available ones", () => {
+    expect(selectSongs(["a", "b", "c"], ["c", "a"])).toEqual(["a", "c"]);
+  });
+
+  test("counts a song named twice once", () => {
+    expect(selectSongs(["a", "b"], ["b", "b"])).toEqual(["b"]);
+  });
+
+  test("rejects an unknown slug", () => {
+    expect(() => selectSongs(["a"], ["x"])).toThrow('Unknown song "x"');
   });
 });
 
