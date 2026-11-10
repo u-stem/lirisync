@@ -61,6 +61,11 @@ function Invoke-Native {
         [Parameter(Mandatory = $true)][string]$FilePath,
         [string[]]$Arguments = @()
     )
+    # Under 'Continue' below, a missing command would only print an error and
+    # leave the exit code at 0, so check for it first.
+    if (-not (Test-CommandExists $FilePath)) {
+        throw "Step failed: $Description ($FilePath was not found on PATH)"
+    }
     $global:LASTEXITCODE = 0
     # Windows PowerShell 5.1 turns native stderr output into errors under 'Stop',
     # and tools such as uv and bun write progress to stderr.
@@ -79,13 +84,14 @@ function Invoke-Native {
 }
 
 # Re-reads PATH from the registry (Machine and User) so tools installed by winget
-# can be used in this session. Entries already in this session are kept at the end.
+# can be used in this session. This session's entries come first, so the order it
+# already has is kept; entries only in the registry are added after them.
 function Update-SessionPath {
     $machine = [Environment]::GetEnvironmentVariable('Path', 'Machine')
     $user = [Environment]::GetEnvironmentVariable('Path', 'User')
     $seen = @{}
     $entries = @()
-    foreach ($source in @($machine, $user, $env:Path)) {
+    foreach ($source in @($env:Path, $machine, $user)) {
         if (-not $source) { continue }
         foreach ($entry in $source.Split(';')) {
             $trimmed = $entry.Trim()
@@ -102,7 +108,7 @@ function Install-MissingTools {
     # A tool installed earlier from a window opened before the install is on the
     # registry PATH but not on this session's; winget would refuse it as installed.
     Update-SessionPath
-    $missing =@($RequiredTools.Keys | Where-Object { -not (Test-CommandExists $_) })
+    $missing = @($RequiredTools.Keys | Where-Object { -not (Test-CommandExists $_) })
     if ($missing.Count -eq 0) {
         Write-Host 'All tools are already installed.'
         return
@@ -117,7 +123,7 @@ function Install-MissingTools {
         $id = $RequiredTools[$name]
         Write-Host "Installing $name ($id)"
         Invoke-Native -Description "winget install $id" -FilePath 'winget' -Arguments @(
-            'install', '--id', $id, '-e',
+            'install', '--id', $id, '-e', '--source', 'winget',
             '--accept-source-agreements', '--accept-package-agreements'
         )
     }
