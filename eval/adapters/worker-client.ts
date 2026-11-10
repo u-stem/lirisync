@@ -109,14 +109,26 @@ export class WorkerClient {
       });
     });
     const request = { v: PROTOCOL_VERSION, id, method, params };
+    // A pipe sink can fail at once or through the promise it returns (Bun's
+    // does for a worker that has exited); either way this request fails.
+    const failed = (error: unknown) => this.#failRequest(id, error);
     try {
-      this.#stdin.write(`${JSON.stringify(request)}\n`);
-      this.#stdin.flush();
+      Promise.resolve(this.#stdin.write(`${JSON.stringify(request)}\n`)).catch(
+        failed,
+      );
+      Promise.resolve(this.#stdin.flush()).catch(failed);
     } catch (error) {
       this.#pending.delete(id);
       return Promise.reject(error);
     }
     return answer;
+  }
+
+  #failRequest(id: string, error: unknown): void {
+    const pending = this.#pending.get(id);
+    if (pending === undefined) return;
+    this.#pending.delete(id);
+    pending.reject(error instanceof Error ? error : new Error(String(error)));
   }
 
   /** Ends the worker's input; the worker exits when it has read all of it. */
