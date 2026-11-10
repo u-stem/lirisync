@@ -187,7 +187,7 @@ bun run eval --asr <name>
 - この信頼度は暫定です。誤差との関係で較正していないので、沈黙誤差率と AUROC は参考値として読んでください
 - 報告は第 1 段、第 2 段の順に出ます（見出しで区別します）。続けて、曲ごとと全体の状態ごとの行数（`refined`、`no_window`、`no_text`、`too_long`、`too_short`）と、モデルの語彙にない文字の数（`skipped chars`）の合計を出します
 - `--out` の JSON には `refine: { spelling, marginMs, report, statuses }` が足されます。`report` は第 2 段の予測の報告（第 1 段と同じ形）、`statuses` は全体（`overall`）と曲ごと（`songs`）の行数です。歌詞の文面は入れません。`--refine` なしの出力と JSON は変わりません
-- `refine` の途中で失敗したときは、第 1 段の報告を表示し、`--out` にも書いたうえで（`refine` は入りません）、エラーで終わります
+- `refine` の途中で失敗したときは、第 1 段の報告を表示し、`--out` にも書いたうえで（`refine` は入りません）、エラーで終わります。`--perturb` を付けていても摂動テストは走らず、標準エラー出力に `note: --perturb is skipped because stage 2 failed` を出します
 - 推論は今のところ CPU だけで、遅くなります。曲ごとの所要時間は標準エラー出力に出ます
 - `--perturb` と同時に指定したときも、摂動は第 1 段だけで行います（標準エラー出力に 1 行の注記が出ます）。第 2 段の摂動は未対応です
 

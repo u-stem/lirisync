@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { parseMs } from "@lirisync/core";
 import {
   assertAlignerModelDir,
@@ -22,7 +22,10 @@ describe("parseRefineOptions", () => {
   });
 
   test("resolves the model directory", () => {
-    expect(parseRefineOptions({ refine: "/a/../m" })?.modelDir).toBe("/m");
+    // resolve() gives D:\m on Windows, so the expectation is resolved too.
+    expect(parseRefineOptions({ refine: "/a/../m" })?.modelDir).toBe(
+      resolve("/m"),
+    );
   });
 
   test("takes the kana spelling", () => {

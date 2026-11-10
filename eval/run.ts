@@ -85,7 +85,7 @@ async function runPerturbations(
 
 /** The `refine` entry of the `--out` file. Lyrics text is not included. */
 type RefineJson = {
-  spelling: string;
+  spelling: RefineOptions["spelling"];
   marginMs: number;
   report: Report;
   statuses: {
@@ -251,6 +251,11 @@ async function main(): Promise<void> {
       } catch (error) {
         refineFailure = { error };
       }
+    }
+    if (values.perturb && refineFailure !== undefined) {
+      process.stderr.write(
+        "note: --perturb is skipped because stage 2 failed\n",
+      );
     }
     if (values.perturb && refineFailure === undefined) {
       // A failed perturbation must not cost the baseline report, which is
