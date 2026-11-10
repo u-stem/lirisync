@@ -73,11 +73,11 @@ def align_ctc(
     skip_allowed = np.zeros(states, dtype=np.bool_)
     skip_allowed[3::2] = labels[3::2] != labels[1:-2:2]
 
-    emissions = values[:, labels]
+    # Emissions are gathered one frame at a time: a [T, 2L+1] float64 table
+    # would dwarf the int8 backpointers on a long window.
     neg_inf = -np.inf
     scores = np.full(states, neg_inf, dtype=np.float64)
-    scores[0] = emissions[0, 0]
-    scores[1] = emissions[0, 1]
+    scores[:2] = values[0, labels[:2]]
     # Per frame and state: how many states back the best predecessor is (0, 1, 2).
     back = np.zeros((frames, states), dtype=np.int8)
     candidates = np.full((3, states), neg_inf, dtype=np.float64)
@@ -87,7 +87,7 @@ def align_ctc(
         candidates[2, 2:] = np.where(skip_allowed[2:], scores[:-2], neg_inf)
         choice = candidates.argmax(axis=0)  # first maximum: stay > advance > skip
         back[t] = choice
-        scores = candidates[choice, np.arange(states)] + emissions[t]
+        scores = candidates[choice, np.arange(states)] + values[t, labels]
 
     state = states - 1 if scores[states - 1] >= scores[states - 2] else states - 2
     log_likelihood = float(scores[state])

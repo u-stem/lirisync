@@ -119,7 +119,7 @@ def test_a_nan_log_prob_is_refused() -> None:
 def test_a_positive_infinite_log_prob_is_refused() -> None:
     log_probs = _uniform(3, 2)
     log_probs[1, 0] = np.inf
-    with pytest.raises(CtcAlignmentError, match="NaN"):
+    with pytest.raises(CtcAlignmentError, match=r"\+inf"):
         align_ctc(log_probs, [1], BLANK)
 
 
@@ -183,21 +183,57 @@ def _random_log_probs(generator: random.Random, frames: int, vocab: int) -> npt.
     return (shifted - np.log(np.exp(shifted).sum(axis=1, keepdims=True))).astype(np.float32)
 
 
-def test_forced_log_likelihood_matches_brute_force_on_random_inputs() -> None:
+def _random_cases(count: int) -> list[tuple[npt.NDArray[np.float32], list[int]]]:
+    """Seeded small inputs (T <= 6, V <= 4, <= 3 tokens) with enough frames."""
     generator = random.Random(20261110)
-    mismatches = []
-    checked = 0
-    while checked < 150:
+    cases: list[tuple[npt.NDArray[np.float32], list[int]]] = []
+    while len(cases) < count:
         frames = generator.randint(1, 6)
         vocab = generator.randint(2, 4)
         tokens = [generator.randint(1, vocab - 1) for _ in range(generator.randint(1, 3))]
         repeats = sum(1 for a, b in itertools.pairwise(tokens) if a == b)
         if frames < len(tokens) + repeats:
             continue
-        checked += 1
-        log_probs = _random_log_probs(generator, frames, vocab)
+        cases.append((_random_log_probs(generator, frames, vocab), tokens))
+    return cases
+
+
+def _path_from_spans(spans: tuple[TokenSpan, ...], tokens: list[int], frames: int) -> list[int]:
+    """Frame labels implied by the spans: each span's token, blank elsewhere."""
+    labels = [BLANK] * frames
+    for span, token in zip(spans, tokens, strict=True):
+        labels[span.start : span.end] = [token] * (span.end - span.start)
+    return labels
+
+
+def _spans_are_ordered(spans: tuple[TokenSpan, ...], frames: int) -> bool:
+    bounds_ok = all(0 <= s.start < s.end <= frames for s in spans)
+    return bounds_ok and all(a.end <= b.start for a, b in itertools.pairwise(spans))
+
+
+def test_forced_log_likelihood_matches_brute_force_on_random_inputs() -> None:
+    mismatches = []
+    for log_probs, tokens in _random_cases(150):
         got = align_ctc(log_probs, tokens, BLANK).log_likelihood
         want = _brute_force_best(log_probs, tokens)
         if not math.isclose(got, want, abs_tol=1e-5):
-            mismatches.append((frames, vocab, tokens, got, want))
+            mismatches.append((log_probs.shape, tokens, got, want))
     assert mismatches == []
+
+
+def test_spans_spell_a_path_with_the_reported_likelihood_on_random_inputs() -> None:
+    # Spans plus "blank elsewhere" fix the path, so a backtracking error shows
+    # up as disordered spans, a wrong spelling, or a different path score.
+    failures = []
+    for log_probs, tokens in _random_cases(150):
+        result = align_ctc(log_probs, tokens, BLANK)
+        frames = log_probs.shape[0]
+        labels = _path_from_spans(result.spans, tokens, frames)
+        score = sum(float(log_probs[t, label]) for t, label in enumerate(labels))
+        if not (
+            _spans_are_ordered(result.spans, frames)
+            and _collapse(tuple(labels)) == tokens
+            and math.isclose(score, result.log_likelihood, abs_tol=1e-5)
+        ):
+            failures.append((log_probs.shape, tokens, result.spans))
+    assert failures == []
