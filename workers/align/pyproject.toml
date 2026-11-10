@@ -49,6 +49,7 @@ ignore = []
 "tools/**" = ["T201"]
 # Normalization tests feed full-width and look-alike characters on purpose.
 "tests/small/test_match_text.py" = ["RUF001"]
+"tests/small/test_ctc_tokens.py" = ["RUF001"]
 
 [tool.mypy]
 strict = true

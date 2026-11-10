@@ -49,6 +49,10 @@ uv --directory workers/align run python tools/check_licenses.py
 uv --directory workers/align run python tools/fetch_separator_model.py --dest ~/lirisync-separator
 LIRISYNC_SEPARATOR_DIR=~/lirisync-separator uv --directory workers/align run pytest tests/medium/test_separator_reference.py
 
+# 文字 CTC モデル（照合の 2 段目）の確認テスト（任意。モデルはリポジトリに含めない）
+uv --directory workers/align run python tools/fetch_aligner_model.py --dest ~/lirisync-aligner
+LIRISYNC_ALIGNER_DIR=~/lirisync-aligner uv --directory workers/align run pytest tests/medium/test_aligner_real_model.py
+
 # 評価用の書き起こしツール（配布しない）
 uv --directory eval/transcribe sync
 uv --directory eval/transcribe run ruff check
@@ -60,6 +64,8 @@ uv --directory eval/transcribe run pytest
 ボーカル分離の参照テストは手動で動かします。モデル（約 240 MB の int8 版）と参照出力はリポジトリに含めないため、環境変数 `LIRISYNC_SEPARATOR_DIR` が未設定かファイルが足りないと skip され、CI では動きません。`workers/align/src/lirisync_worker/separation/` を変えたら、上の 2 行（取得とテスト）で動かしてください。Windows でも動かし、SNR を PR に記録します（ファイルには残しません）。取得するファイルは固定した版と SHA-256 で検査します。`--fp16` を付けると GPU 用の fp16 版（約 460 MB）と参照出力も取得しますが、取得するだけで、fp16 を使う参照テストはまだありません。
 
 int8 のモデルは、モデルカードによると AVX512-VNNI と AVX-VNNI を持つ CPU で正確で、VNNI のない古い x86 では飽和することがあります（上流では測っていません）。このテストの 47.5 dB は Apple silicon で測った値です。しきい値の 40 dB は目標ではなく下限で、移植が正しい場合と、レイアウトや STFT の誤り（ほぼ 0 dB になる）を分けるために置いています。
+
+文字 CTC モデルの確認テストも手動で動かします。モデル（約 360 MB の int8 版）と語彙はリポジトリに含めないため、環境変数 `LIRISYNC_ALIGNER_DIR` が未設定かファイルが足りないと skip され、CI では動きません。`workers/align/src/lirisync_worker/ctc_model.py` と `ctc_tokens.py` を変えたら、上の 2 行（取得とテスト）で動かしてください。取得するファイルは固定した版と SHA-256 で検査します。
 
 ワーカーの `separate` は、音声のデコードと WAV の書き出しに ffmpeg を別プロセスで呼びます。開発中は `PATH` の `ffmpeg` を使い、別の実行ファイルを使うときは環境変数 `LIRISYNC_FFMPEG` にそのパスを入れます。見つからないと `ffmpeg_missing` を返します。実モデルを通すテスト（`tests/medium/test_separate_real_model.py`）は、`LIRISYNC_SEPARATOR_DIR` が未設定か ffmpeg がないと skip されます。
 

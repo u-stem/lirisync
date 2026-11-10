@@ -131,18 +131,25 @@ _SMALL_KANA = str.maketrans(
 )
 
 
+def katakana_to_hiragana(text: str) -> str:
+    """Shift katakana ァ..ヶ (including ヴ) to the matching hiragana; nothing else changes."""
+    return "".join(
+        chr(ord(ch) - _KATAKANA_TO_HIRAGANA) if _KATAKANA_START <= ord(ch) <= _KATAKANA_END else ch
+        for ch in text
+    )
+
+
 def fold_kana(text: str) -> str:
     """Katakana to hiragana, small kana to full size, drop っ and ー.
 
     Sung vowels stretch and clip freely, so あぁー, ああ and あー should compare
     equal; folding both sides the same way is enough for a similarity score.
     """
-    hiragana = "".join(
-        chr(ord(ch) - _KATAKANA_TO_HIRAGANA) if _KATAKANA_START <= ord(ch) <= _KATAKANA_END else ch
-        for ch in text
-    )
     # NFC composes a mark left behind by the mapping (ㇷ + U+309A -> ぷ).
-    return unicodedata.normalize("NFC", hiragana.translate(_SMALL_KANA))
+    return unicodedata.normalize("NFC", katakana_to_hiragana(text).translate(_SMALL_KANA))
+
+
+type Fold = Callable[[str], str]
 
 
 def _fold(text: str) -> str:
@@ -150,7 +157,7 @@ def _fold(text: str) -> str:
 
 
 @cache
-def _folded_ignored(ignored: frozenset[str]) -> frozenset[str]:
+def _folded_ignored(ignored: frozenset[str], fold: Fold) -> frozenset[str]:
     """The user's extra characters, normalized the same way as the text.
 
     Comparing them only before folding would miss the folded text: ら would not
@@ -162,19 +169,25 @@ def _folded_ignored(ignored: frozenset[str]) -> frozenset[str]:
     that expands to several (U+337B to 平成, ß to ss) is left out: the text is
     expanded the same way, so it could only remove those parts everywhere.
     """
-    folded = (_fold(unicodedata.normalize("NFKC", ch)) for ch in ignored)
+    folded = (fold(unicodedata.normalize("NFKC", ch)) for ch in ignored)
     return frozenset(f for f in folded if len(f) == 1)
 
 
-def _finish(text: str, ignored: frozenset[str]) -> str:
-    drop = _folded_ignored(ignored)
-    return "".join(ch for ch in _fold(text) if ch not in drop)
+def finish(text: str, ignored: frozenset[str], fold: Fold = _fold) -> str:
+    """`fold` the text, then drop the user's ignored characters (folded the same way).
+
+    `fold` must be a module-level function (the folded ignored set is cached by
+    it). The default is the matching fold; the CTC text builders pass their own,
+    which keeps the kana that the matching fold drops.
+    """
+    drop = _folded_ignored(ignored, fold)
+    return "".join(ch for ch in fold(text) if ch not in drop)
 
 
 def surface_form(text: str, ignored: frozenset[str]) -> str:
     """NFKC, expand all iteration marks, then fold. Kanji are kept as written."""
     normalized = unicodedata.normalize("NFKC", text)
-    return _finish(expand_iteration_marks(normalized, kanji=True), ignored)
+    return finish(expand_iteration_marks(normalized, kanji=True), ignored)
 
 
 def reading_form(text: str, read: Reader, ignored: frozenset[str]) -> str:
@@ -200,7 +213,7 @@ def is_symbol_only(text: str, ignored: frozenset[str]) -> bool:
 
 
 def reading_chars(
-    texts: Sequence[str], read: Reader, ignored: frozenset[str]
+    texts: Sequence[str], read: Reader, ignored: frozenset[str], fold: Fold = _fold
 ) -> list[tuple[str, int]]:
     """Folded reading characters of `texts` read as one, each tagged with the
     index of the text it came from.
@@ -214,6 +227,8 @@ def reading_chars(
     own spaces. In Japanese, Whisper splits an English word into fragments
     (" beaut", "iful") and marks the word boundary only by the leading space;
     adding a separator here would break the word apart.
+
+    `fold` is how each token's reading is folded (see `finish`).
     """
     normalized = [
         expand_iteration_marks(unicodedata.normalize("NFKC", t), kanji=False) for t in texts
@@ -229,8 +244,8 @@ def reading_chars(
             raise ValueError("reader token surfaces do not cover the input text")
         span = owner[offset : offset + len(token.surface)]
         offset += len(token.surface)
-        reading = _finish(token.reading or token.surface, ignored)
-        if not span or not _finish(token.surface, ignored):
+        reading = finish(token.reading or token.surface, ignored, fold)
+        if not span or not finish(token.surface, ignored, fold):
             continue
         out.extend((ch, span[k * len(span) // len(reading)]) for k, ch in enumerate(reading))
     if offset != len(joined):

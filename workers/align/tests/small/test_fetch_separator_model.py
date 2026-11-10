@@ -7,7 +7,8 @@ from pathlib import Path
 
 import pytest
 
-import fetch_separator_model as fetch
+import fetch_common as fetch
+import fetch_separator_model as separator
 
 PAYLOAD = b"separator-model-bytes" * 1000
 DIGEST = hashlib.sha256(PAYLOAD).hexdigest()
@@ -137,47 +138,47 @@ def test_progress_is_logged(tmp_path: Path) -> None:
 
 
 def test_the_url_names_the_pinned_revision() -> None:
-    assert fetch.url_for("sep-all-int8.onnx") == (
+    assert separator.url_for("sep-all-int8.onnx") == (
         "https://huggingface.co/redbaty/ytm-vocal-separator/resolve/"
         "d9d3f27d58c4f9c0286a07ed541b18ceaa91f107/sep-all-int8.onnx"
     )
 
 
 def test_default_files_leave_out_the_fp16_model() -> None:
-    assert "sep-all-fp16.onnx" not in fetch.select_files(None, with_fp16=False)
+    assert "sep-all-fp16.onnx" not in separator.select_files(None, with_fp16=False)
 
 
 def test_the_fp16_flag_adds_the_fp16_model_and_its_reference() -> None:
-    names = fetch.select_files(None, with_fp16=True)
+    names = separator.select_files(None, with_fp16=True)
 
     assert {"sep-all-fp16.onnx", "ref-stems-all-fp16.f32"} <= set(names)
 
 
 def test_default_files_include_the_int8_model_and_its_reference() -> None:
-    names = fetch.select_files(None, with_fp16=False)
+    names = separator.select_files(None, with_fp16=False)
 
     assert {"sep-all-int8.onnx", "ref-input.f32", "ref-stems-all-int8.f32"} <= set(names)
 
 
 def test_an_unknown_file_name_is_rejected() -> None:
     with pytest.raises(ValueError, match="unknown"):
-        fetch.select_files(["other.bin"], with_fp16=False)
+        separator.select_files(["other.bin"], with_fp16=False)
 
 
 def test_a_file_named_twice_is_fetched_once() -> None:
-    chosen = fetch.select_files([fetch.FP16_FILES[0]], with_fp16=True)
+    chosen = separator.select_files([separator.FP16_FILES[0]], with_fp16=True)
 
-    assert chosen == list(fetch.FP16_FILES)
+    assert chosen == list(separator.FP16_FILES)
 
 
 def test_every_pinned_hash_is_a_sha256_hex_digest() -> None:
-    assert all(re.fullmatch(r"[0-9a-f]{64}", h) for h in fetch.PINNED_SHA256.values())
+    assert all(re.fullmatch(r"[0-9a-f]{64}", h) for h in separator.PINNED_SHA256.values())
 
 
 def test_the_fp16_flag_adds_the_fp16_files_to_named_files() -> None:
-    chosen = fetch.select_files(["ref-input.f32"], with_fp16=True)
+    chosen = separator.select_files(["ref-input.f32"], with_fp16=True)
 
-    assert chosen == ["ref-input.f32", *fetch.FP16_FILES]
+    assert chosen == ["ref-input.f32", *separator.FP16_FILES]
 
 
 def test_a_body_shorter_than_content_length_is_reported_as_truncated(tmp_path: Path) -> None:
@@ -221,13 +222,13 @@ def test_a_failure_in_the_middle_of_the_stream_leaves_no_file_behind(tmp_path: P
 
 
 def test_main_reports_an_unknown_file_name_as_a_failure(tmp_path: Path) -> None:
-    assert fetch.main(["--dest", str(tmp_path), "--files", "other.bin"], Recorder()) == 1
+    assert separator.main(["--dest", str(tmp_path), "--files", "other.bin"], Recorder()) == 1
 
 
 def test_main_creates_the_destination_directory(tmp_path: Path) -> None:
     dest = tmp_path / "models" / "separator"
 
-    fetch.main(["--dest", str(dest), "--files", "ref-input.f32"], Recorder())
+    separator.main(["--dest", str(dest), "--files", "ref-input.f32"], Recorder())
 
     assert dest.is_dir()
 
@@ -235,8 +236,8 @@ def test_main_creates_the_destination_directory(tmp_path: Path) -> None:
 def test_main_reports_a_broken_stream_as_a_failure(tmp_path: Path) -> None:
     opener = Recorder(fail_after=2000)
 
-    assert fetch.main(["--dest", str(tmp_path), "--files", "ref-input.f32"], opener) == 1
+    assert separator.main(["--dest", str(tmp_path), "--files", "ref-input.f32"], opener) == 1
 
 
 def test_main_reports_a_hash_mismatch_as_a_failure(tmp_path: Path) -> None:
-    assert fetch.main(["--dest", str(tmp_path), "--files", "ref-input.f32"], Recorder()) == 1
+    assert separator.main(["--dest", str(tmp_path), "--files", "ref-input.f32"], Recorder()) == 1

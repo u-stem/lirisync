@@ -57,11 +57,19 @@ sudachipy は型スタブ（`sudachipy.pyi`）を同梱するが `py.typed` が�
 
 ### モデル
 
-依存ではないが、分離モデルの出所をここに記録する。
+依存ではないが、モデルの出所をここに記録する。
 
 - 取得元：Hugging Face の `redbaty/ytm-vocal-separator`、版は `d9d3f27d58c4f9c0286a07ed541b18ceaa91f107` に固定
 - ライセンス：モデルカードに MIT と書かれている。元の重みが MIT であることは、上流の Hugging Face のタグだけを根拠にしており、こちらでは確かめていない。配布するときは、元の重みの出所とライセンスを確かめ直す
 - モデルのファイル（`sep-all-int8.onnx` など）は、テストのために `tools/fetch_separator_model.py` が固定した版と SHA-256 で取得する。リポジトリにも配布物にも入れない
+
+#### 文字 CTC モデル（照合の 2 段目）
+
+- 取得元：Hugging Face の `parseh/aligner-ja`、版は `66eb48c224294f16a5aae3500964b756d9d23354` に固定
+- 中身：`reazon-research/japanese-wav2vec2-large-rs35kh`（版 `2162c9edb97f362f7623d6b3a2e417458e879bca`）を ONNX の動的 int8 にしたもの。入力は 16 kHz モノラル、出力は 20 ms ごとの文字の対数確率（語彙は 3000 項目、出力は 3003 列）
+- ライセンス：Apache-2.0。取得元に `LICENSE` と `NOTICE` がある。配布するときは、両方を同梱する
+- 学習データ：ReazonSpeech。コーパスの利用条件が学習済みモデルの配布に及ぶかは確かめていない。配布するときに確かめ直す
+- モデルのファイルは、テストのために `tools/fetch_aligner_model.py` が固定した版と SHA-256 で取得する。リポジトリにも配布物にも入れない
 
 ## Python（eval/transcribe、評価専用）
 
