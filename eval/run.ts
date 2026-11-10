@@ -1,9 +1,11 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { parseArgs } from "node:util";
-import type { AnchoredLine } from "@lirisync/core";
+import type { AnchoredLine, RefinedLine } from "@lirisync/core";
 import { WorkerAnchorer } from "./adapters/worker-anchorer";
 import { alignWorkerCommand, startWorker } from "./adapters/worker-process";
+import { WorkerRefiner } from "./adapters/worker-refiner";
+import { findVocals } from "./src/audio-files";
 import {
   buildPerturbationReport,
   formatPerturbationReport,
@@ -13,7 +15,25 @@ import {
 } from "./src/perturbation-run";
 import { perturbations } from "./src/perturbations";
 import { assertLabeledLinesSung, toPredictions } from "./src/predictions";
-import { buildReport, formatReport, type SongResult } from "./src/report";
+import {
+  assertAlignerModelDir,
+  parseRefineOptions,
+  type RefineOptions,
+} from "./src/refine-options";
+import {
+  addStatusCounts,
+  countStatuses,
+  formatStatusCounts,
+  type StatusCounts,
+  toRefinedPredictions,
+  windowsFromAnchors,
+} from "./src/refinement";
+import {
+  buildReport,
+  formatReport,
+  type Report,
+  type SongResult,
+} from "./src/report";
 import {
   assertAsrName,
   listSongs,
@@ -63,6 +83,55 @@ async function runPerturbations(
   return buildPerturbationReport(bySong);
 }
 
+/** The `refine` entry of the `--out` file. Lyrics text is not included. */
+type RefineJson = {
+  spelling: RefineOptions["spelling"];
+  marginMs: number;
+  report: Report;
+  statuses: {
+    overall: StatusCounts;
+    songs: ({ slug: string } & StatusCounts)[];
+  };
+};
+
+/** What stage 2 produced for one song. */
+type SongRefinement = {
+  slug: string;
+  result: SongResult;
+  lines: RefinedLine[];
+};
+
+/**
+ * Runs stage 2 on one song: the lines stage 1 anchored are forced inside their
+ * windows. The lines stage 2 cannot check go back to stage 1's position.
+ */
+async function refineSong(
+  refiner: WorkerRefiner,
+  song: Song,
+  audioPath: string,
+  options: RefineOptions,
+  baseline: SongResult,
+  anchored: readonly AnchoredLine[],
+): Promise<SongRefinement> {
+  const lines = await refiner.refine({
+    audioPath,
+    modelDir: options.modelDir,
+    lyrics: song.lyrics,
+    windows: windowsFromAnchors(anchored),
+    spelling: options.spelling,
+    ignored: [],
+    margin: options.margin,
+  });
+  return {
+    slug: song.slug,
+    result: {
+      ...baseline,
+      predictions: toRefinedPredictions(anchored, lines),
+    },
+    lines,
+  };
+}
+
 async function main(): Promise<void> {
   const { values } = parseArgs({
     options: {
@@ -74,6 +143,9 @@ async function main(): Promise<void> {
       song: { type: "string", multiple: true },
       out: { type: "string" },
       perturb: { type: "boolean", default: false },
+      refine: { type: "string" },
+      spelling: { type: "string" },
+      "margin-ms": { type: "string" },
     },
     strict: true,
   });
@@ -82,6 +154,7 @@ async function main(): Promise<void> {
     throw new Error("--asr <name> is required");
   }
   assertAsrName(asr);
+  const refineOptions = parseRefineOptions(values);
   const songsDir = resolve(values["songs-dir"]);
   const slugs = selectSongs(await listSongs(songsDir), values.song);
 
@@ -91,8 +164,28 @@ async function main(): Promise<void> {
     songs.push(await loadSong(songsDir, slug, asr));
   }
 
-  const worker = await startWorker(alignWorkerCommand(repoRoot), ["anchor"]);
+  // Stage 2 needs the model and every song's vocals; check them all now too.
+  const vocals = new Map<string, string>();
+  if (refineOptions !== null) {
+    await assertAlignerModelDir(refineOptions.modelDir);
+    for (const song of songs) {
+      vocals.set(song.slug, await findVocals(songsDir, song.slug));
+    }
+    if (values.perturb) {
+      process.stderr.write(
+        "note: --perturb perturbs stage 1 only; stage 2 is not perturbed\n",
+      );
+    }
+  }
+
+  const worker = await startWorker(
+    alignWorkerCommand(repoRoot),
+    refineOptions === null ? ["anchor"] : ["anchor", "refine"],
+  );
   const results: SongResult[] = [];
+  const anchoredBySong: AnchoredLine[][] = [];
+  const refinements: SongRefinement[] = [];
+  let refineFailure: { error: unknown } | undefined;
   let perturbation: PerturbationReport | undefined;
   let perturbationFailure: { error: unknown } | undefined;
   try {
@@ -116,8 +209,55 @@ async function main(): Promise<void> {
         truth: song.truth,
         predictions: toPredictions(lines),
       });
+      anchoredBySong.push(lines);
     }
-    if (values.perturb) {
+    if (refineOptions !== null) {
+      // As for perturbations: a failure must not cost the stage-1 report.
+      try {
+        const refiner = new WorkerRefiner(worker.client);
+        for (const [index, song] of songs.entries()) {
+          const baseline = results[index];
+          const anchored = anchoredBySong[index];
+          const audioPath = vocals.get(song.slug);
+          if (
+            baseline === undefined ||
+            anchored === undefined ||
+            audioPath === undefined
+          ) {
+            throw new Error(`${song.slug}: no stage-1 result to refine`);
+          }
+          const started = performance.now();
+          try {
+            refinements.push(
+              await refineSong(
+                refiner,
+                song,
+                audioPath,
+                refineOptions,
+                baseline,
+                anchored,
+              ),
+            );
+          } catch (error) {
+            const reason =
+              error instanceof Error ? error.message : String(error);
+            throw new Error(`${song.slug}: ${reason}`);
+          }
+          const seconds = (performance.now() - started) / 1000;
+          process.stderr.write(
+            `[${index + 1}/${songs.length}] ${song.slug}: refined in ${seconds.toFixed(1)} s\n`,
+          );
+        }
+      } catch (error) {
+        refineFailure = { error };
+      }
+    }
+    if (values.perturb && refineFailure !== undefined) {
+      process.stderr.write(
+        "note: --perturb is skipped because stage 2 failed\n",
+      );
+    }
+    if (values.perturb && refineFailure === undefined) {
       // A failed perturbation must not cost the baseline report, which is
       // already computed: it is printed first and the failure rethrown below.
       try {
@@ -137,7 +277,32 @@ async function main(): Promise<void> {
   }
 
   const report = buildReport(results);
-  process.stdout.write(formatReport(report));
+  let refineJson: RefineJson | undefined;
+  if (refineOptions === null) {
+    process.stdout.write(formatReport(report));
+  } else {
+    process.stdout.write(`Stage 1: anchor\n\n${formatReport(report)}`);
+    if (refineFailure === undefined) {
+      const refineReport = buildReport(refinements.map(({ result }) => result));
+      const songCounts = refinements.map(({ slug, lines }) => ({
+        slug,
+        counts: countStatuses(lines),
+      }));
+      process.stdout.write(
+        `\nStage 2: refine (spelling ${refineOptions.spelling}, margin ${refineOptions.margin} ms)\n\n${formatReport(refineReport)}`,
+      );
+      process.stdout.write(`\n${formatStatusCounts(songCounts)}`);
+      refineJson = {
+        spelling: refineOptions.spelling,
+        marginMs: refineOptions.margin,
+        report: refineReport,
+        statuses: {
+          overall: addStatusCounts(songCounts.map(({ counts }) => counts)),
+          songs: songCounts.map(({ slug, counts }) => ({ slug, ...counts })),
+        },
+      };
+    }
+  }
   if (perturbation !== undefined) {
     process.stdout.write(`\n${formatPerturbationReport(perturbation)}`);
   }
@@ -148,9 +313,13 @@ async function main(): Promise<void> {
       asr,
       worker: worker.hello.worker,
       report,
+      ...(refineJson === undefined ? {} : { refine: refineJson }),
       ...(perturbation === undefined ? {} : { perturbation }),
     };
     await writeFile(out, `${JSON.stringify(json, null, 2)}\n`);
+  }
+  if (refineFailure !== undefined) {
+    throw refineFailure.error;
   }
   if (perturbationFailure !== undefined) {
     throw perturbationFailure.error;
