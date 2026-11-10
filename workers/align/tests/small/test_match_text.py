@@ -7,6 +7,7 @@ from lirisync_worker.match_text import (
     expand_iteration_marks,
     fold_kana,
     is_symbol_only,
+    katakana_to_hiragana,
     match_forms,
     reading_chars,
     reading_form,
@@ -84,6 +85,17 @@ def test_long_vowel_mark_survives_stripping() -> None:
 
 def test_extra_ignored_characters_are_stripped() -> None:
     assert strip_ignored("ラララ〇", frozenset({"〇"})) == "ラララ"
+
+
+# katakana_to_hiragana
+
+
+def test_katakana_to_hiragana_shifts_katakana_and_keeps_the_rest() -> None:
+    assert katakana_to_hiragana("カナーっゃ漢A") == "かなーっゃ漢A"
+
+
+def test_katakana_to_hiragana_shifts_small_and_voiced_katakana() -> None:
+    assert katakana_to_hiragana("ッャヴヶ") == "っゃゔゖ"
 
 
 # fold_kana
