@@ -289,6 +289,28 @@ describe("WorkerClient", () => {
     await expect(client.request("hello", {})).rejects.toThrow("broken pipe");
   });
 
+  // Bun's pipe sink reports a broken pipe through the promise it returns, as
+  // when the worker has already exited.
+  test("rejects when writing the request fails asynchronously", async () => {
+    const stdin = {
+      write: () => Promise.reject(new Error("EPIPE")),
+      flush() {},
+      end() {},
+    };
+    const client = new WorkerClient({ stdin, stdout: new ReadableStream() });
+    await expect(client.request("hello", {})).rejects.toThrow("EPIPE");
+  });
+
+  test("rejects when flushing the request fails asynchronously", async () => {
+    const stdin = {
+      write() {},
+      flush: () => Promise.reject(new Error("EPIPE")),
+      end() {},
+    };
+    const client = new WorkerClient({ stdin, stdout: new ReadableStream() });
+    await expect(client.request("hello", {})).rejects.toThrow("EPIPE");
+  });
+
   test("rejects a progress message for an id that was not asked", async () => {
     const worker = fakeWorker(() => [
       protocolLine({
