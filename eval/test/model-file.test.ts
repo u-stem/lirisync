@@ -27,6 +27,18 @@ describe("assertModelFile", () => {
     );
   });
 
+  // Windows reports a path under a file as missing, so the case is POSIX only.
+  test.skipIf(process.platform === "win32")(
+    "passes on a failure other than a missing file",
+    async () => {
+      const file = join(dir, "file");
+      await writeFile(file, "x");
+      await expect(assertModelFile(join(file, "m.onnx"))).rejects.toThrow(
+        "ENOTDIR",
+      );
+    },
+  );
+
   test("rejects a directory", async () => {
     await mkdir(join(dir, "m.onnx"));
     await expect(assertModelFile(join(dir, "m.onnx"))).rejects.toThrow(

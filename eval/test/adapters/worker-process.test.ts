@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { join } from "node:path";
 import { WorkerProtocolError } from "../../adapters/worker-client";
 import { alignWorkerCommand, startWorker } from "../../adapters/worker-process";
 
@@ -13,7 +14,7 @@ describe("alignWorkerCommand", () => {
     expect(alignWorkerCommand("/repo")).toEqual([
       "uv",
       "--directory",
-      "/repo/workers/align",
+      join("/repo", "workers", "align"),
       "run",
       "lirisync-worker",
     ]);
