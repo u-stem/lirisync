@@ -146,7 +146,7 @@ bun run eval --asr <name>
 | `--asr <name>` | 使う書き起こし（`asr/<name>.json`）。必須。英数字、`.`、`_`、`-` だけ使えます |
 | `--songs-dir <path>` | 曲のディレクトリ。既定は `eval/songs` |
 | `--song <slug>` | 評価する曲を絞ります。繰り返して複数指定できます。存在しない slug はエラーです |
-| `--out <path>` | 結果を JSON で書き出します（`{ asr, worker, report }`。`--refine` のときは `refine`、`--perturb` のときは `perturbation` も） |
+| `--out <path>` | 結果を JSON で書き出します（`{ asr, worker, report }`。`--refine` のときは `refine`、`--perturb` のときは `perturbation` も。`--refine` と `--perturb` を併用したときは、第 2 段の摂動を `refine.perturbation` に入れます） |
 | `--perturb` | 歌詞を壊して整列し直す摂動テストを、通常の評価のあとに実行します。既定はオフで、付けないと通常の出力は変わりません。「摂動テスト」を見てください |
 | `--refine <model dir>` | 第 2 段（強制整列）も測ります。「第 2 段を測る」を見てください |
 | `--spelling surface\|kana` | 第 2 段で強制する文字。`--refine` が要ります |
@@ -189,7 +189,7 @@ bun run eval --asr <name>
 - `--out` の JSON には `refine: { spelling, marginMs, report, statuses }` が足されます。`report` は第 2 段の予測の報告（第 1 段と同じ形）、`statuses` は全体（`overall`）と曲ごと（`songs`）の行数です。歌詞の文面は入れません。`--refine` なしの出力と JSON は変わりません
 - `refine` の途中で失敗したときは、第 1 段の報告を表示し、`--out` にも書いたうえで（`refine` は入りません）、エラーで終わります。`--perturb` を付けていても摂動テストは走らず、標準エラー出力に `note: --perturb is skipped because stage 2 failed` を出します
 - 推論は今のところ CPU だけで、遅くなります。曲ごとの所要時間は標準エラー出力に出ます
-- `--perturb` と同時に指定したときも、摂動は第 1 段だけで行います（標準エラー出力に 1 行の注記が出ます）。第 2 段の摂動は未対応です
+- `--perturb` と同時に指定すると、第 1 段と第 2 段の摂動を 1 回の実行で測ります。出力は `Stage 1 perturbation` と `Stage 2 perturbation` の 2 節になります。「摂動テスト」を見てください
 
 ## 摂動テスト
 
@@ -208,6 +208,9 @@ bun run eval --asr <name>
 - 種類ごとに、摂動の数、巻き添えが 1 行以上の摂動の数（`with collateral`）、巻き添えが 2 行以上の摂動の割合（`over one`）、巻き添えの平均と最大、`improved` の合計を出します。採用の基準は `over one` が 0 %、つまり巻き添えが 1 行以内であることです
 - `collapse` は、歌詞に直後の繰り返しのブロックがあるときだけ摂動ができます。なければ摂動の数は 0 で、割合は「—」です
 - 摂動のたびにワーカーの `anchor` を 1 回呼びます。数は、標準エラー出力の最初の行（`N perturbations`）と、曲ごとの進捗行（かかった時間つき）で分かります
+- `--refine` を付けたときは、摂動のたびに第 1 段のあと `refine` も最大 1 回呼び、第 2 段の巻き添えも同じ基準で数えます（基準は第 2 段の予測です）。`refine` は 1 回ごとに音声を読み込むので重く、全行を送ると CPU では 1 曲で数十分かかります。そのため、送るのは窓か文面が基準や前の摂動と変わった行だけにして、ほかの行は前の結果を使い回します。ワーカーの `refine` は行ごとに独立なので、結果は変わりません。窓のない行はワーカーに送らず `no_window` とし、送る行が 1 行もなければ `refine` を呼びません
+- 出力は、`--refine` なしのときは `Perturbation` の 1 節です。`--refine` ありのときは `Stage 1 perturbation` と `Stage 2 perturbation` の 2 節になり、読み方は同じです
 - `--out` の `perturbation` には、種類ごとの集計（`kinds`）と、曲ごとの摂動の一覧（`songs`）が入ります。一覧の各要素は `kind`、`at`（元の歌詞で編集が始まる行）、`span`（編集が及ぶ行数。`delete` と `duplicate` では 1）、`collateral`、`collateralLines`（巻き添えになった元の行番号）、`improved` です。歌詞の文面は入れません。`collapse` では、`at` は繰り返しの 1 回目のブロックの先頭行、`span` はブロックの行数です。消すのは `at + span` 行目から始まる 2 回目のブロックで、数えないのは両方のブロックの `2 × span` 行です
 - 摂動した歌詞では、ラベルのある行が「歌わない行」になっても止めません（行にラベルが付いているのではなく、対応づけているためです）
-- 摂動の途中で `anchor` が失敗したときは、通常の評価の結果を表示し、`--out` にも書いたうえで（`perturbation` は入りません）、エラーで終わります
+- `--refine` を付けたとき、`--out` の第 2 段の摂動は `refine.perturbation` に入ります。中身は `perturbation` と同じ形（`kinds` と `songs`）で、`collateral` と `improved` は第 2 段の予測で数えます
+- 摂動の途中で `anchor` か `refine` が失敗したときは、通常の評価の結果を表示し、`--out` にも書いたうえで（`perturbation` と `refine.perturbation` は入りません）、エラーで終わります。第 1 段と第 2 段のどちらの摂動の報告も出しません

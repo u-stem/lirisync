@@ -1,4 +1,4 @@
-import type { Anchorer } from "@lirisync/core";
+import type { Anchorer, AsrWord, RefineRequest, Refiner } from "@lirisync/core";
 import {
   type KindSummary,
   perturbationOutcome,
@@ -11,6 +11,7 @@ import {
   type PerturbationKind,
 } from "./perturbations";
 import { toPredictions } from "./predictions";
+import { toRefinedPredictions, windowsFromAnchors } from "./refinement";
 import type { Song } from "./song-set";
 
 /**
@@ -38,41 +39,105 @@ export type PerturbationReport = {
   songs: SongPerturbations[];
 };
 
+/** What each stage predicts for one version of the lyrics. */
+export type StagePredictions = {
+  anchor: Prediction[];
+  /** `null` when stage 2 is not measured. */
+  refine: Prediction[] | null;
+};
+
+/** Predicts the line starts of a version of the lyrics, stage by stage. */
+export type Predict = (lyrics: readonly string[]) => Promise<StagePredictions>;
+
 /**
- * Runs the aligner's first stage on each perturbed version of a song (same
- * words, nothing ignored) and compares it with the baseline. The labeled-lines
- * check is not applied: the lines are mapped, not labeled, in a perturbed run.
+ * Builds a `Predict` that anchors the lyrics (same words, nothing ignored) and,
+ * when `refine` is given, refines the lines stage 1 anchored with one call of
+ * the refiner. `refine.request` is everything of the request but the lyrics
+ * and the windows.
+ */
+export function stagePredictor(
+  anchorer: Anchorer,
+  words: AsrWord[],
+  refine: {
+    refiner: Refiner;
+    request: Omit<RefineRequest, "lyrics" | "windows">;
+  } | null,
+): Predict {
+  return async (lyrics) => {
+    const anchored = await anchorer.anchor({ lyrics, words, ignored: [] });
+    const anchor = toPredictions(anchored);
+    if (refine === null) {
+      return { anchor, refine: null };
+    }
+    const lines = await refine.refiner.refine({
+      ...refine.request,
+      lyrics,
+      windows: windowsFromAnchors(anchored),
+    });
+    return { anchor, refine: toRefinedPredictions(anchored, lines) };
+  };
+}
+
+/**
+ * Predicts each perturbed version of a song and compares it with the baseline,
+ * for stage 1 and, when the baseline has stage 2, for stage 2. The
+ * labeled-lines check is not applied: the lines are mapped, not labeled, in a
+ * perturbed run.
  */
 export async function runSongPerturbations(
-  anchorer: Anchorer,
-  song: Pick<Song, "slug" | "words" | "truth">,
-  baseline: Prediction[],
+  predict: Predict,
+  song: Pick<Song, "slug" | "truth">,
+  baseline: StagePredictions,
   plan: readonly Perturbation[],
-): Promise<PerturbationRecord[]> {
-  const records: PerturbationRecord[] = [];
+): Promise<{
+  anchor: PerturbationRecord[];
+  refine: PerturbationRecord[] | null;
+}> {
+  const anchor: PerturbationRecord[] = [];
+  const refine: PerturbationRecord[] | null =
+    baseline.refine === null ? null : [];
   for (const perturbation of plan) {
     const { kind, at, span } = perturbation;
-    let perturbed: Prediction[];
+    let perturbed: StagePredictions;
     try {
-      perturbed = toPredictions(
-        await anchorer.anchor({
-          lyrics: perturbation.lyrics,
-          words: song.words,
-          ignored: [],
-        }),
-      );
+      perturbed = await predict(perturbation.lyrics);
+      if (baseline.refine !== null && perturbed.refine === null) {
+        throw new Error("no stage 2 predictions");
+      }
     } catch (error) {
       const reason = error instanceof Error ? error.message : String(error);
       throw new Error(`${song.slug}: ${kind} at line ${at}: ${reason}`);
     }
-    records.push({
+    anchor.push({
       kind,
       at,
       span,
-      ...perturbationOutcome(song.truth, baseline, perturbation, perturbed),
+      ...perturbationOutcome(
+        song.truth,
+        baseline.anchor,
+        perturbation,
+        perturbed.anchor,
+      ),
     });
+    if (
+      refine !== null &&
+      baseline.refine !== null &&
+      perturbed.refine !== null
+    ) {
+      refine.push({
+        kind,
+        at,
+        span,
+        ...perturbationOutcome(
+          song.truth,
+          baseline.refine,
+          perturbation,
+          perturbed.refine,
+        ),
+      });
+    }
   }
-  return records;
+  return { anchor, refine };
 }
 
 /** Summarizes each kind over all songs, in the order of `PERTURBATION_KINDS`. */
@@ -99,9 +164,12 @@ function percent(value: number): string {
  * A plain-text section: one row per kind. "over one" is the share of
  * perturbations that cost more than one line, the adoption criterion.
  */
-export function formatPerturbationReport(report: PerturbationReport): string {
+export function formatPerturbationReport(
+  report: PerturbationReport,
+  title = "Perturbation",
+): string {
   const lines = [
-    "Perturbation (collateral: a line good in the baseline that is no longer good)",
+    `${title} (collateral: a line good in the baseline that is no longer good)`,
   ];
   for (const summary of report.kinds) {
     const { kind, perturbations, overOneRate } = summary;
