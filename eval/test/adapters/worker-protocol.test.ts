@@ -4,6 +4,8 @@ import {
   AnchorParams,
   AnchorResult,
   HelloResult,
+  RefineParams,
+  RefineResult,
   Request,
   Response,
   SeparateParams,
@@ -37,6 +39,29 @@ const separateParams = {
   model: "/models/sep.onnx",
 };
 const separateResult = { durationMs: 3000, sampleRate: 44100, channels: 2 };
+const refineParams = {
+  audio: "/work/vocals.wav",
+  model: "/models/aligner",
+  lyrics: ["風が吹く", "花"],
+  windows: [{ startMs: 1000, endMs: 3000 }, null],
+  spelling: "kana",
+  ignored: ["♪"],
+  marginMs: 500,
+};
+const refinedLine = {
+  status: "refined",
+  startMs: 1102,
+  endMs: 2342,
+  logRatio: -0.25,
+  skippedChars: 0,
+};
+const unrefinedLine = {
+  status: "no_window",
+  startMs: null,
+  endMs: null,
+  logRatio: null,
+  skippedChars: 0,
+};
 
 type Case = [name: string, value: unknown];
 
@@ -148,6 +173,77 @@ const cases: Record<string, { parser: z.ZodType; values: Case[] }> = {
       ["a negative end", { lines: [{ ...line, endMs: -1 }] }],
       ["a ratio past 1", { lines: [{ ...line, matchRatio: 1.5 }] }],
       ["a missing ambiguous", { lines: [{ ...line, ambiguous: undefined }] }],
+      ["an extra key", { lines: [], x: 1 }],
+    ],
+  },
+  RefineParams: {
+    parser: RefineParams,
+    values: [
+      ["refine params", refineParams],
+      ["no lines", { ...refineParams, lyrics: [], windows: [] }],
+      ["surface spelling", { ...refineParams, spelling: "surface" }],
+      ["an unknown spelling", { ...refineParams, spelling: "romaji" }],
+      ["a zero margin", { ...refineParams, marginMs: 0 }],
+      ["a negative margin", { ...refineParams, marginMs: -1 }],
+      ["a fractional margin", { ...refineParams, marginMs: 0.5 }],
+      ["a missing margin", { ...refineParams, marginMs: undefined }],
+      ["an empty audio", { ...refineParams, audio: "" }],
+      ["an empty model", { ...refineParams, model: "" }],
+      ["a window of nothing but null", { ...refineParams, windows: [null] }],
+      [
+        "a window with a negative start",
+        { ...refineParams, windows: [{ startMs: -1, endMs: 5 }, null] },
+      ],
+      [
+        "a window with a fractional end",
+        { ...refineParams, windows: [{ startMs: 0, endMs: 1.5 }, null] },
+      ],
+      [
+        "a window with an extra key",
+        { ...refineParams, windows: [{ startMs: 0, endMs: 5, x: 1 }, null] },
+      ],
+      [
+        "a window that is not an object",
+        { ...refineParams, windows: [1, null] },
+      ],
+      [
+        "a repeated ignored character",
+        { ...refineParams, ignored: ["a", "a"] },
+      ],
+      ["an extra key", { ...refineParams, x: 1 }],
+    ],
+  },
+  RefineResult: {
+    parser: RefineResult,
+    values: [
+      ["a refined line", { lines: [refinedLine] }],
+      ["a line without a window", { lines: [unrefinedLine] }],
+      ["no lines", { lines: [] }],
+      ["a perfect log ratio", { lines: [{ ...refinedLine, logRatio: 0 }] }],
+      ["a positive log ratio", { lines: [{ ...refinedLine, logRatio: 0.1 }] }],
+      [
+        "a line that skipped characters",
+        { lines: [{ ...refinedLine, skippedChars: 2 }] },
+      ],
+      [
+        "a negative skipped count",
+        { lines: [{ ...refinedLine, skippedChars: -1 }] },
+      ],
+      [
+        "a fractional skipped count",
+        { lines: [{ ...refinedLine, skippedChars: 0.5 }] },
+      ],
+      ["an unknown status", { lines: [{ ...refinedLine, status: "x" }] }],
+      [
+        "a too_long status",
+        { lines: [{ ...unrefinedLine, status: "too_long" }] },
+      ],
+      ["a fractional start", { lines: [{ ...refinedLine, startMs: 1.5 }] }],
+      ["a negative end", { lines: [{ ...refinedLine, endMs: -1 }] }],
+      [
+        "a missing log ratio",
+        { lines: [{ ...refinedLine, logRatio: undefined }] },
+      ],
       ["an extra key", { lines: [], x: 1 }],
     ],
   },

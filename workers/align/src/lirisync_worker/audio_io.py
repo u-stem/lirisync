@@ -21,7 +21,7 @@ FFMPEG_ENV = "LIRISYNC_FFMPEG"
 # Long enough for hours of audio; short enough that a hung ffmpeg does not hold the worker forever.
 FFMPEG_TIMEOUT_SECONDS = 600
 _STDERR_TAIL_CHARS = 500
-_BYTES_PER_FRAME = 4 * STEREO
+_BYTES_PER_SAMPLE = 4
 # Keeps a console window from flashing for each child on Windows; 0 elsewhere.
 _NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 
@@ -70,8 +70,11 @@ def _run_ffmpeg(arguments: list[str], stdin: bytes | None) -> subprocess.Complet
         ) from None
 
 
-def decode_audio(path: Path) -> Audio:
-    """Decode the first audio stream of `path` to 44.1 kHz stereo float32, `[2, n]`.
+def decode_audio(path: Path, *, sample_rate: int = SAMPLE_RATE, channels: int = STEREO) -> Audio:
+    """Decode the first audio stream of `path` to float32, `[channels, n]`.
+
+    The default is 44.1 kHz stereo, `[2, n]`; ffmpeg converts to whatever rate
+    and channel count is asked for.
 
     Raises ``ProtocolError`` ``ffmpeg_missing`` if ffmpeg cannot be started and
     ``audio_unreadable`` if it rejects the file, and ``internal`` if it was killed
@@ -95,9 +98,9 @@ def decode_audio(path: Path) -> Audio:
             "-acodec",
             "pcm_f32le",
             "-ac",
-            str(STEREO),
+            str(channels),
             "-ar",
-            str(SAMPLE_RATE),
+            str(sample_rate),
             "-",
         ],
         None,
@@ -113,9 +116,10 @@ def decode_audio(path: Path) -> Audio:
             f"ffmpeg warned while decoding {path.name}: {stderr_tail(completed.stderr)}\n"
         )
         sys.stderr.flush()
-    usable = len(completed.stdout) - len(completed.stdout) % _BYTES_PER_FRAME
+    bytes_per_frame = _BYTES_PER_SAMPLE * channels
+    usable = len(completed.stdout) - len(completed.stdout) % bytes_per_frame
     samples = np.frombuffer(completed.stdout[:usable], dtype="<f4")
-    return np.ascontiguousarray(samples.reshape(-1, STEREO).T, dtype=np.float32)
+    return np.ascontiguousarray(samples.reshape(-1, channels).T, dtype=np.float32)
 
 
 def encode_wav(audio: Audio, path: Path) -> None:

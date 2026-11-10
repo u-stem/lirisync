@@ -18,6 +18,7 @@ from lirisync_worker.protocol import (
     progress_message,
     result_message,
 )
+from lirisync_worker.refine import make_refine
 from lirisync_worker.separate import make_separate
 
 type ProgressSink = Callable[[str, float, int | None], None]
@@ -88,6 +89,7 @@ def default_registry() -> Registry:
             "hello": hello,
             "anchor": make_anchor(_sudachi_reader),
             "separate": make_separate(),
+            "refine": make_refine(_sudachi_reader),
             "shutdown": shutdown,
         }
     )

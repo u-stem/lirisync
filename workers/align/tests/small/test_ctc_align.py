@@ -6,7 +6,7 @@ import numpy as np
 import numpy.typing as npt
 import pytest
 
-from lirisync_worker.ctc_align import CtcAlignmentError, TokenSpan, align_ctc
+from lirisync_worker.ctc_align import CtcAlignmentError, CtcTooShortError, TokenSpan, align_ctc
 
 BLANK = 0
 
@@ -153,6 +153,25 @@ def test_an_impossible_forced_path_is_refused() -> None:
     log_probs[0, 1] = -np.inf
     with pytest.raises(CtcAlignmentError, match="impossible"):
         align_ctc(log_probs, [1], BLANK)
+
+
+def test_too_few_frames_is_reported_as_too_short() -> None:
+    with pytest.raises(CtcTooShortError):
+        align_ctc(_uniform(2, 2), [1, 1], BLANK)
+
+
+def test_an_impossible_forced_path_is_reported_as_too_short() -> None:
+    log_probs = _uniform(1, 2)
+    log_probs[0, 1] = -np.inf
+    with pytest.raises(CtcTooShortError):
+        align_ctc(log_probs, [1], BLANK)
+
+
+def test_a_malformed_input_is_not_reported_as_too_short() -> None:
+    with pytest.raises(CtcAlignmentError) as caught:
+        align_ctc(_uniform(3, 2), [BLANK], BLANK)
+
+    assert not isinstance(caught.value, CtcTooShortError)
 
 
 # Property check against a brute-force search over every frame labelling.

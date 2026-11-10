@@ -69,6 +69,8 @@ int8 のモデルは、モデルカードによると AVX512-VNNI と AVX-VNNI �
 
 ワーカーの `separate` は、音声のデコードと WAV の書き出しに ffmpeg を別プロセスで呼びます。開発中は `PATH` の `ffmpeg` を使い、別の実行ファイルを使うときは環境変数 `LIRISYNC_FFMPEG` にそのパスを入れます。見つからないと `ffmpeg_missing` を返します。実モデルを通すテスト（`tests/medium/test_separate_real_model.py`）は、`LIRISYNC_SEPARATOR_DIR` が未設定か ffmpeg がないと skip されます。
 
+ワーカーの `refine`（照合の 2 段目）は、1 段目で決まった窓ごとに歌詞を文字 CTC モデルで強制整列し、行の開始・終了を整数ミリ秒で返します。音声は ffmpeg で 16 kHz モノラルにデコードします。窓の前後に足す余裕（`marginMs`）は呼び出し側が決め、ワーカーに既定値はありません。余裕を足して音声の長さで切った窓が 30 秒を超える行は、強制せずに `too_long` として返します。実モデルを通すテスト（`tests/medium/test_refine_real_model.py`）は、`LIRISYNC_ALIGNER_DIR` が未設定か ffmpeg がないと skip されます。
+
 配布版に入れる依存は、MIT・Apache-2.0・BSD などの寛容なライセンスに限ります。許可するライセンスは `scripts/allowed-licenses.json` にあり、CI で検査します。
 
 ## ライセンス

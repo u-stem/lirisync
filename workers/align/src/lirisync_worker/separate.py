@@ -2,7 +2,6 @@
 
 import os
 import secrets
-import stat
 import time
 from collections.abc import Callable, Mapping
 from pathlib import Path
@@ -12,6 +11,12 @@ from pydantic import BaseModel, ConfigDict, StrictStr, StringConstraints, Valida
 
 from lirisync_worker.audio_io import decode_audio, encode_wav
 from lirisync_worker.protocol import ProtocolError, describe_validation_error
+from lirisync_worker.request_files import (
+    LatestModel,
+    check_input_file,
+    model_file_state,
+    resolve_path,
+)
 from lirisync_worker.separation.demix import Audio, chunk_count, demix
 from lirisync_worker.separation.model import MaskModel
 from lirisync_worker.separation.stft import SAMPLE_RATE
@@ -28,7 +33,6 @@ type Decoder = Callable[[Path], Audio]
 type Encoder = Callable[[Audio, Path], None]
 type ModelLoader = Callable[[Path], Process]
 
-type _FileState = tuple[int, int]  # st_mtime_ns, st_size
 type _Path = Annotated[StrictStr, StringConstraints(min_length=1)]
 
 
@@ -57,45 +61,22 @@ def make_separate(
     model files does not accumulate sessions. It is loaded again when another
     file is used or when the file's modification time or size changes.
     """
-    latest: list[tuple[Path, _FileState, Process]] = []
-
-    def model_for(path: Path, state: _FileState) -> Process:
-        if latest and latest[0][:2] == (path, state):
-            return latest[0][2]
-        # Release the previous session before loading the next one, so two
-        # models are never in memory at once.
-        latest.clear()
-        try:
-            loaded = model_loader(path)
-        except ImportError as exc:
-            raise ProtocolError(
-                "internal", f"cannot load the inference runtime: {_first_line(exc)}"
-            ) from None
-        except MemoryError:
-            raise ProtocolError(
-                "internal", f"out of memory while loading model file {path}"
-            ) from None
-        except Exception as exc:  # onnxruntime raises its own types for bad files
-            raise ProtocolError(
-                "model_missing", f"cannot use model file {path}: {_first_line(exc)}"
-            ) from None
-        latest[:] = [(path, state, loaded)]
-        return loaded
+    models = LatestModel(model_loader, lambda path: f"model file {path}")
 
     def separate(session: "Session", params: Mapping[str, object]) -> dict[str, object]:
         parsed = _parse(params)
-        input_path = _resolve(parsed.input, "input")
-        output_path = _resolve(parsed.output, "output")
-        model_path = _resolve(parsed.model, "model")
-        _check_input(input_path)
+        input_path = resolve_path(parsed.input, "input")
+        output_path = resolve_path(parsed.output, "output")
+        model_path = resolve_path(parsed.model, "model")
+        check_input_file(input_path, "input")
         _check_output(input_path, output_path)
-        model_state = _model_state(model_path)
+        model_state = model_file_state(model_path)
 
         audio = decoder(input_path)
         samples = audio.shape[-1]
         if samples == 0:
             raise ProtocolError("audio_unreadable", f"{input_path.name} has no audio samples")
-        model = model_for(model_path, model_state)
+        model = models.get(model_path, model_state)
 
         total = chunk_count(samples)
         started = clock()
@@ -132,28 +113,6 @@ def _parse(params: Mapping[str, object]) -> _Params:
         ) from None
 
 
-def _resolve(text: str, what: str) -> Path:
-    """Absolute form of a path from the host; text the OS cannot use is a bad request."""
-    try:
-        return Path(text).resolve()
-    except (ValueError, OSError, RuntimeError):  # UnicodeError is a ValueError
-        raise ProtocolError("invalid_request", f"{what} is not a usable path") from None
-
-
-def _check_input(input_path: Path) -> None:
-    """Refuse what is not a plain file before ffmpeg opens it: a FIFO would block it forever.
-
-    A path that does not exist is left to ffmpeg, which reports it as unreadable.
-    """
-    try:
-        exists = input_path.exists()
-        regular = input_path.is_file()
-    except (ValueError, OSError):
-        raise ProtocolError("invalid_request", "input is not a usable path") from None
-    if exists and not regular:
-        raise ProtocolError("invalid_request", f"input is not a regular file: {input_path}")
-
-
 def _check_output(input_path: Path, output_path: Path) -> None:
     if output_path.suffix.lower() != ".wav":
         raise ProtocolError("invalid_request", "output must be a .wav file")
@@ -177,16 +136,6 @@ def _same_file(first: Path, second: Path) -> bool:
         return False
 
 
-def _model_state(path: Path) -> _FileState:
-    try:
-        status = path.stat()
-    except (OSError, ValueError):
-        raise ProtocolError("model_missing", f"model file not found: {path}") from None
-    if not stat.S_ISREG(status.st_mode):
-        raise ProtocolError("model_missing", f"model path is not a file: {path}")
-    return (status.st_mtime_ns, status.st_size)
-
-
 def _write_atomically(encoder: Encoder, audio: Audio, output: Path) -> None:
     """Encode beside `output` under a short temporary name, then rename over it."""
     temporary = output.with_name(f".lirisync-{secrets.token_hex(8)}.tmp.wav")
@@ -201,8 +150,3 @@ def _write_atomically(encoder: Encoder, audio: Audio, output: Path) -> None:
     except BaseException:
         temporary.unlink(missing_ok=True)
         raise
-
-
-def _first_line(exc: Exception) -> str:
-    lines = str(exc).strip().splitlines()
-    return lines[0] if lines else type(exc).__name__
