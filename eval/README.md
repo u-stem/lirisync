@@ -131,6 +131,35 @@ uv --directory eval/transcribe run lirisync-transcribe --model Systran/faster-wh
 - 単語が 1 つもない曲は `warning: <slug>: no words` を出します（終了コードは 0 のままです）。音声が空か、モデルが何も聞き取れなかった可能性があります
 - `<name>` は `.meta` で終われません。`<name>.meta.json` と名前がぶつかるためです
 
+## まとめて流す
+
+曲を置いたあと、分離から評価までを 1 コマンドで流せます。モデルは、セットアップのスクリプトで `C:\lirisync-models` に取得済みであることが前提です（`separator\sep-all-int8.onnx` と `aligner\`）。
+
+```sh
+bun run eval:all
+```
+
+次の 4 つを順に、それぞれ子プロセスとして実行します。各手順の前に、標準エラー出力へ `==> [n/4] <name>` を出します。
+
+1. `separate`：`bun run eval:separate --skip-existing` と同じです。ミックスからボーカルを分離します
+2. `transcribe`：`lirisync-transcribe --skip-existing` と同じです。ボーカルを書き起こします。`--device` は渡さないので `auto` です
+3. `eval surface`：`bun run eval --refine --spelling surface --perturb` と同じです
+4. `eval kana`：同じ評価を `--spelling kana` で実行します
+
+| オプション | 内容 |
+| --- | --- |
+| `--models-dir <path>` | モデルを置いたディレクトリ（直下に `separator/` と `aligner/`）。Windows では既定が `C:\lirisync-models`、それ以外では必須です |
+| `--asr-model <repo id またはパス>` | 書き起こしに使う Whisper のモデル。既定は `Systran/faster-whisper-large-v3` |
+| `--asr <name>` | 書き起こしの名前（`asr/<name>.json`）。既定は `large-v3`。使える文字は `bun run eval --asr` と同じです |
+| `--out-dir <path>` | 結果の JSON を書き出すディレクトリ。なければ作ります。既定は `eval/results` |
+| `--songs-dir <path>` | 曲のディレクトリ。既定は `eval/songs` |
+| `--song <slug>` | 処理する曲を絞ります。繰り返して複数指定できます。4 つの手順すべてに渡します |
+
+- 長い処理を始める前に、分離モデルのファイル、整列モデルのディレクトリ（`model.int8.onnx` と `vocab.json`）、曲が 1 つ以上あることを確かめます。曲がないときは「曲の置き方」を見るよう案内するエラーで止まります
+- 手順が 0 以外の終了コードで終わったら、`<name> failed (exit code N)` のエラーで止まり、後続の手順は走らせません。同じコマンドをもう一度実行すると続きから進みます。`separate` と `transcribe` は `--skip-existing` 付きで走るので、終えた曲を飛ばすためです。設定を変えて取り直すときは、このコマンドでなく各コマンドを `--overwrite` 付きで実行してください
+- 出力は `<out-dir>/<asr>-surface.json` と `<out-dir>/<asr>-kana.json` の 2 つです。形は `--out` の JSON と同じで、歌詞の文面は入らないのでコミットしてかまいません。完了すると、書き出した 2 つのパスを標準エラー出力に出します
+- 書き起こしは `--device auto` で走ります。CUDA が使えないときは CPU になり、大きなモデルでは遅くなります。分離と第 2 段も CPU だけで走ります
+
 ## 実行
 
 ```sh
