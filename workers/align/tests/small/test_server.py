@@ -56,7 +56,13 @@ def test_hello_reports_worker_version() -> None:
 def test_hello_lists_supported_methods() -> None:
     _, messages = _serve([_request("hello")])
 
-    assert _result_of(messages[0])["methods"] == ["hello", "anchor", "separate", "shutdown"]
+    assert _result_of(messages[0])["methods"] == [
+        "hello",
+        "anchor",
+        "separate",
+        "refine",
+        "shutdown",
+    ]
 
 
 def test_hello_rejects_non_empty_params() -> None:

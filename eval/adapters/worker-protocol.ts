@@ -117,3 +117,34 @@ export const SeparateResult = z.strictObject({
   channels: z.literal(2),
 });
 export type SeparateResult = z.infer<typeof SeparateResult>;
+
+const RefineWindow = z.strictObject({ startMs: Ms, endMs: Ms });
+
+/**
+ * `windows` has one entry per line of `lyrics`, and a window's `endMs` is not
+ * before its `startMs`; the schema cannot say either, and the worker rejects
+ * both.
+ */
+export const RefineParams = z.strictObject({
+  audio: z.string().min(1),
+  model: z.string().min(1),
+  lyrics: z.array(z.string()),
+  windows: z.array(RefineWindow.nullable()),
+  spelling: z.enum(["surface", "kana"]),
+  ignored: z
+    .array(z.string().refine((c) => codePoints(c) === 1, "one character"))
+    .refine(isUnique, "ignored characters repeat"),
+  marginMs: Ms,
+});
+export type RefineParams = z.infer<typeof RefineParams>;
+
+const RefinedLine = z.strictObject({
+  status: z.enum(["refined", "no_window", "no_text", "too_long", "too_short"]),
+  startMs: Ms.nullable(),
+  endMs: Ms.nullable(),
+  logRatio: z.number().max(0).nullable(),
+  skippedChars: z.number().int().nonnegative(),
+});
+
+export const RefineResult = z.strictObject({ lines: z.array(RefinedLine) });
+export type RefineResult = z.infer<typeof RefineResult>;

@@ -195,6 +195,100 @@
       },
       "required": ["durationMs", "sampleRate", "channels"],
       "additionalProperties": false
+    },
+    "RefineWindow": {
+      "description": "The span of the audio in which one lyric line is known to lie, as found by the first stage. Times are integer milliseconds on the audio's own timeline, and endMs is not before startMs.",
+      "type": "object",
+      "properties": {
+        "startMs": { "type": "integer", "minimum": 0 },
+        "endMs": { "type": "integer", "minimum": 0 }
+      },
+      "required": ["startMs", "endMs"],
+      "additionalProperties": false
+    },
+    "RefineParams": {
+      "description": "Second stage of alignment: force-align each lyric line with a character CTC model, only inside a window around the place the first stage found, and report where the line starts and ends. For line i, the audio from max(0, windows[i].startMs - marginMs) to min(audio length, windows[i].endMs + marginMs) is cut out and given to the model, which emits one frame per 20 ms. Boundary k of the cut's frames lies 20 * k + 2 ms after the cut's start (frame k looks at 25 ms starting 20 * k ms in; the boundary is 10 ms before the frame's center, rounded down to a whole millisecond). The line's startMs is the boundary at the start of the first frame it is sung in and its endMs the boundary at the end of the last, as integer milliseconds on the audio's own timeline. Progress is reported with stage 'refine', once per line. Errors: invalid_request for params that do not match this definition, model_missing if the model directory cannot be used, audio_unreadable and ffmpeg_missing as for the other methods that decode audio.",
+      "type": "object",
+      "properties": {
+        "audio": {
+          "description": "The vocals: any audio file the ffmpeg executable can decode; its first audio stream is used. It is decoded to 16 kHz mono float32.",
+          "type": "string",
+          "minLength": 1
+        },
+        "model": {
+          "description": "The directory of the character CTC model, holding model.int8.onnx and vocab.json.",
+          "type": "string",
+          "minLength": 1
+        },
+        "lyrics": { "type": "array", "items": { "type": "string" } },
+        "windows": {
+          "description": "One entry per lyric line, so the array has the same length as lyrics. null for a line the first stage could not place.",
+          "type": "array",
+          "items": {
+            "anyOf": [{ "$ref": "#/$defs/RefineWindow" }, { "type": "null" }]
+          }
+        },
+        "spelling": {
+          "description": "What is forced: 'surface' keeps the kanji as written, 'kana' uses the dictionary reading as hiragana.",
+          "enum": ["surface", "kana"]
+        },
+        "ignored": {
+          "description": "Characters the user marked as not sung, one character each.",
+          "type": "array",
+          "items": { "type": "string", "minLength": 1, "maxLength": 1 },
+          "uniqueItems": true
+        },
+        "marginMs": {
+          "description": "Room added before and after each window, in milliseconds. The host decides it; the worker has no default.",
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "audio",
+        "model",
+        "lyrics",
+        "windows",
+        "spelling",
+        "ignored",
+        "marginMs"
+      ],
+      "additionalProperties": false
+    },
+    "RefinedLine": {
+      "description": "The outcome for one lyric line. startMs, endMs and logRatio are set only when status is 'refined'. The statuses: refined; no_window (the window was null); no_text (no character of the line can be forced, because none is sung or none is in the vocabulary); too_long (the window with its margin, cut to the audio, is longer than 30000 ms, a limit that keeps memory bounded); too_short (the window holds too few frames for the characters, or no path can spell them).",
+      "type": "object",
+      "properties": {
+        "status": {
+          "enum": ["refined", "no_window", "no_text", "too_long", "too_short"]
+        },
+        "startMs": { "type": ["integer", "null"], "minimum": 0 },
+        "endMs": { "type": ["integer", "null"], "minimum": 0 },
+        "logRatio": {
+          "description": "How well the audio supports the line, as a per-frame log likelihood ratio (0 or less; nearer 0 is better). Over the frames the line is sung in, from the first character's first frame to the last character's last frame, it is the sum of the log probabilities along the forced path minus the sum of each frame's largest log probability, divided by the number of those frames. The silence before and after the line is left out so that it does not dilute the value.",
+          "type": ["number", "null"],
+          "maximum": 0
+        },
+        "skippedChars": {
+          "description": "How many characters of the line the vocabulary has no token for and were left out of the forcing. 0 for no_window.",
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "required": ["status", "startMs", "endMs", "logRatio", "skippedChars"],
+      "additionalProperties": false
+    },
+    "RefineResult": {
+      "description": "One entry per lyric line, in order.",
+      "type": "object",
+      "properties": {
+        "lines": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/RefinedLine" }
+        }
+      },
+      "required": ["lines"],
+      "additionalProperties": false
     }
   }
 }

@@ -158,7 +158,7 @@ def missing_model_session(tmp_path_factory: pytest.TempPathFactory) -> WorkerRun
 def test_hello_lists_separate_in_registration_order(noisy_session: WorkerRun) -> None:
     methods = result_of(noisy_session.messages[0])["methods"]
 
-    assert methods == ["hello", "anchor", "separate", "shutdown"]
+    assert methods == ["hello", "anchor", "separate", "refine", "shutdown"]
 
 
 def test_separate_with_a_missing_model_is_a_schema_valid_error(

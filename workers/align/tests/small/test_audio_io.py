@@ -139,6 +139,64 @@ def test_decoding_sets_the_whitelist_before_the_input(
     assert fake.argv.index("-protocol_whitelist") < fake.argv.index("-i")
 
 
+def test_decoding_asks_ffmpeg_for_the_requested_rate(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    fake = _fake(monkeypatch)
+    decode_audio(tmp_path / "song.mp3", sample_rate=16000, channels=1)
+    i = fake.argv.index("-ar")
+
+    assert fake.argv[i : i + 2] == ["-ar", "16000"]
+
+
+def test_decoding_asks_ffmpeg_for_the_requested_channel_count(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    fake = _fake(monkeypatch)
+    decode_audio(tmp_path / "song.mp3", sample_rate=16000, channels=1)
+    i = fake.argv.index("-ac")
+
+    assert fake.argv[i : i + 2] == ["-ac", "1"]
+
+
+def test_decoding_to_mono_returns_one_row_of_samples(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _fake(monkeypatch, stdout=np.arange(5, dtype="<f4").tobytes())
+
+    assert decode_audio(tmp_path / "song.mp3", sample_rate=16000, channels=1).shape == (1, 5)
+
+
+def test_decoding_to_mono_keeps_the_sample_order(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _fake(monkeypatch, stdout=np.arange(3, dtype="<f4").tobytes())
+
+    assert decode_audio(tmp_path / "song.mp3", sample_rate=16000, channels=1)[0].tolist() == [
+        0.0,
+        1.0,
+        2.0,
+    ]
+
+
+def test_decoding_drops_a_trailing_partial_frame_of_the_requested_layout(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _fake(monkeypatch, stdout=np.zeros(5, dtype="<f4").tobytes())
+
+    assert decode_audio(tmp_path / "song.mp3").shape == (2, 2)
+
+
+def test_decoding_defaults_to_44100_hz_stereo(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    fake = _fake(monkeypatch)
+    decode_audio(tmp_path / "song.mp3")
+    i = fake.argv.index("-ar")
+
+    assert (fake.argv[i + 1], fake.argv[fake.argv.index("-ac") + 1]) == ("44100", "2")
+
+
 def test_a_clean_decode_with_stderr_output_keeps_the_audio(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
