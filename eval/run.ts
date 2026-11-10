@@ -1,17 +1,19 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { parseArgs } from "node:util";
-import type { AnchoredLine, RefinedLine } from "@lirisync/core";
+import type { AnchoredLine, RefinedLine, Refiner } from "@lirisync/core";
 import { WorkerAnchorer } from "./adapters/worker-anchorer";
 import { alignWorkerCommand, startWorker } from "./adapters/worker-process";
 import { WorkerRefiner } from "./adapters/worker-refiner";
 import { findVocals } from "./src/audio-files";
+import { MemoRefiner } from "./src/memo-refiner";
 import {
   buildPerturbationReport,
   formatPerturbationReport,
   type PerturbationReport,
   runSongPerturbations,
   type SongPerturbations,
+  stagePredictor,
 } from "./src/perturbation-run";
 import { perturbations } from "./src/perturbations";
 import { assertLabeledLinesSung, toPredictions } from "./src/predictions";
@@ -44,19 +46,36 @@ import {
 
 const repoRoot = resolve(import.meta.dir, "..");
 
+/** What `--refine` gives the perturbation run: the refiner and the baselines. */
+type PerturbRefine = {
+  refiner: Refiner;
+  options: RefineOptions;
+  vocals: ReadonlyMap<string, string>;
+  refinements: readonly SongRefinement[];
+};
+
+/** `refine` is `null` when stage 2 is not measured. */
+type PerturbationReports = {
+  anchor: PerturbationReport;
+  refine: PerturbationReport | null;
+};
+
 /**
- * Runs stage 1 on every perturbation of every song and compares each with the
- * baseline in `results`. Progress goes to stderr, one line per song.
+ * Runs stage 1, and stage 2 when `refine` is given, on every perturbation of
+ * every song and compares each with the baseline in `results` (and in
+ * `refine.refinements`). Progress goes to stderr, one line per song.
  */
 async function runPerturbations(
   anchorer: WorkerAnchorer,
+  refine: PerturbRefine | null,
   songs: readonly Song[],
   results: readonly SongResult[],
-): Promise<PerturbationReport> {
+): Promise<PerturbationReports> {
   const plans = songs.map((song) => perturbations(song.lyrics, song.truth));
   const total = plans.reduce((sum, plan) => sum + plan.length, 0);
   process.stderr.write(`${total} perturbations\n`);
-  const bySong: SongPerturbations[] = [];
+  const anchorSongs: SongPerturbations[] = [];
+  const refineSongs: SongPerturbations[] = [];
   let done = 0;
   for (const [index, song] of songs.entries()) {
     const plan = plans[index];
@@ -64,23 +83,60 @@ async function runPerturbations(
     if (plan === undefined || baseline === undefined) {
       throw new Error(`${song.slug}: no baseline for the perturbation run`);
     }
+    let refineBaseline: SongRefinement | undefined;
+    let audioPath: string | undefined;
+    if (refine !== null) {
+      refineBaseline = refine.refinements[index];
+      audioPath = refine.vocals.get(song.slug);
+      if (refineBaseline === undefined || audioPath === undefined) {
+        throw new Error(
+          `${song.slug}: no stage-2 baseline for the perturbation run`,
+        );
+      }
+    }
+    const predict = stagePredictor(
+      anchorer,
+      song.words,
+      refine === null || audioPath === undefined
+        ? null
+        : {
+            refiner: refine.refiner,
+            request: {
+              audioPath,
+              modelDir: refine.options.modelDir,
+              spelling: refine.options.spelling,
+              ignored: [],
+              margin: refine.options.margin,
+            },
+          },
+    );
     const started = performance.now();
     const records = await runSongPerturbations(
-      anchorer,
+      predict,
       song,
-      baseline.predictions,
+      {
+        anchor: baseline.predictions,
+        refine: refineBaseline?.result.predictions ?? null,
+      },
       plan,
     );
-    done += records.length;
+    done += records.anchor.length;
     const seconds = (performance.now() - started) / 1000;
-    const perCall = records.length === 0 ? 0 : seconds / records.length;
+    const perCall =
+      records.anchor.length === 0 ? 0 : seconds / records.anchor.length;
     process.stderr.write(
-      `[${index + 1}/${songs.length}] ${song.slug}: ${records.length} perturbations ` +
+      `[${index + 1}/${songs.length}] ${song.slug}: ${records.anchor.length} perturbations ` +
         `in ${seconds.toFixed(1)} s (${perCall.toFixed(2)} s each), ${done}/${total} done\n`,
     );
-    bySong.push({ slug: song.slug, perturbations: records });
+    anchorSongs.push({ slug: song.slug, perturbations: records.anchor });
+    if (records.refine !== null) {
+      refineSongs.push({ slug: song.slug, perturbations: records.refine });
+    }
   }
-  return buildPerturbationReport(bySong);
+  return {
+    anchor: buildPerturbationReport(anchorSongs),
+    refine: refine === null ? null : buildPerturbationReport(refineSongs),
+  };
 }
 
 /** The `refine` entry of the `--out` file. Lyrics text is not included. */
@@ -92,6 +148,8 @@ type RefineJson = {
     overall: StatusCounts;
     songs: ({ slug: string } & StatusCounts)[];
   };
+  /** Only with `--perturb`: the same shape as the stage-1 `perturbation`. */
+  perturbation?: PerturbationReport;
 };
 
 /** What stage 2 produced for one song. */
@@ -106,7 +164,7 @@ type SongRefinement = {
  * windows. The lines stage 2 cannot check go back to stage 1's position.
  */
 async function refineSong(
-  refiner: WorkerRefiner,
+  refiner: Refiner,
   song: Song,
   audioPath: string,
   options: RefineOptions,
@@ -171,11 +229,6 @@ async function main(): Promise<void> {
     for (const song of songs) {
       vocals.set(song.slug, await findVocals(songsDir, song.slug));
     }
-    if (values.perturb) {
-      process.stderr.write(
-        "note: --perturb perturbs stage 1 only; stage 2 is not perturbed\n",
-      );
-    }
   }
 
   const worker = await startWorker(
@@ -186,7 +239,7 @@ async function main(): Promise<void> {
   const anchoredBySong: AnchoredLine[][] = [];
   const refinements: SongRefinement[] = [];
   let refineFailure: { error: unknown } | undefined;
-  let perturbation: PerturbationReport | undefined;
+  let perturbation: PerturbationReports | undefined;
   let perturbationFailure: { error: unknown } | undefined;
   try {
     const anchorer = new WorkerAnchorer(worker.client);
@@ -211,10 +264,12 @@ async function main(): Promise<void> {
       });
       anchoredBySong.push(lines);
     }
+    // One memo for the baseline and every perturbation: a line whose text and
+    // window did not change is not refined again.
+    const refiner = new MemoRefiner(new WorkerRefiner(worker.client));
     if (refineOptions !== null) {
       // As for perturbations: a failure must not cost the stage-1 report.
       try {
-        const refiner = new WorkerRefiner(worker.client);
         for (const [index, song] of songs.entries()) {
           const baseline = results[index];
           const anchored = anchoredBySong[index];
@@ -261,7 +316,14 @@ async function main(): Promise<void> {
       // A failed perturbation must not cost the baseline report, which is
       // already computed: it is printed first and the failure rethrown below.
       try {
-        perturbation = await runPerturbations(anchorer, songs, results);
+        perturbation = await runPerturbations(
+          anchorer,
+          refineOptions === null
+            ? null
+            : { refiner, options: refineOptions, vocals, refinements },
+          songs,
+          results,
+        );
       } catch (error) {
         perturbationFailure = { error };
       }
@@ -300,11 +362,22 @@ async function main(): Promise<void> {
           overall: addStatusCounts(songCounts.map(({ counts }) => counts)),
           songs: songCounts.map(({ slug, counts }) => ({ slug, ...counts })),
         },
+        ...(perturbation?.refine == null
+          ? {}
+          : { perturbation: perturbation.refine }),
       };
     }
   }
   if (perturbation !== undefined) {
-    process.stdout.write(`\n${formatPerturbationReport(perturbation)}`);
+    const staged = perturbation.refine !== null;
+    process.stdout.write(
+      `\n${formatPerturbationReport(perturbation.anchor, staged ? "Stage 1 perturbation" : undefined)}`,
+    );
+    if (perturbation.refine !== null) {
+      process.stdout.write(
+        `\n${formatPerturbationReport(perturbation.refine, "Stage 2 perturbation")}`,
+      );
+    }
   }
   if (values.out !== undefined) {
     const out = resolve(values.out);
@@ -314,7 +387,9 @@ async function main(): Promise<void> {
       worker: worker.hello.worker,
       report,
       ...(refineJson === undefined ? {} : { refine: refineJson }),
-      ...(perturbation === undefined ? {} : { perturbation }),
+      ...(perturbation === undefined
+        ? {}
+        : { perturbation: perturbation.anchor }),
     };
     await writeFile(out, `${JSON.stringify(json, null, 2)}\n`);
   }

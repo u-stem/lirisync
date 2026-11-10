@@ -4,12 +4,18 @@ import {
   type Anchorer,
   type AnchorRequest,
   parseMs,
+  type RefinedLine,
+  type RefineRequest,
+  type Refiner,
 } from "@lirisync/core";
 import type { Prediction } from "../src/metrics";
 import {
   buildPerturbationReport,
   formatPerturbationReport,
+  type Predict,
   runSongPerturbations,
+  type StagePredictions,
+  stagePredictor,
 } from "../src/perturbation-run";
 import { perturbations } from "../src/perturbations";
 
@@ -31,77 +37,183 @@ class SecondsAnchorer implements Anchorer {
   }
 }
 
+/** Refines every line with a window to the start of that window plus 100 ms. */
+class ShiftRefiner implements Refiner {
+  readonly requests: RefineRequest[] = [];
+
+  async refine(request: RefineRequest): Promise<RefinedLine[]> {
+    this.requests.push(request);
+    return request.windows.map(
+      (window): RefinedLine =>
+        window === null
+          ? { status: "no_window", skippedChars: 0 }
+          : {
+              status: "refined",
+              start: parseMs(window.start + 100),
+              end: window.end,
+              logRatio: 0,
+              skippedChars: 0,
+            },
+    );
+  }
+}
+
+const refineBase: Omit<RefineRequest, "lyrics" | "windows"> = {
+  audioPath: "vocals.wav",
+  modelDir: "model",
+  spelling: "surface",
+  ignored: [],
+  margin: parseMs(1000),
+};
+
 const lyrics = ["a", "b", "b", "c"];
 const truth = [1, 2, 3, 4].map((line) => ({
   line,
   start: parseMs(line * 5000),
 }));
-const baseline: Prediction[] = truth.map(({ line, start }) => ({
+const baselinePredictions: Prediction[] = truth.map(({ line, start }) => ({
   line,
   start,
 }));
+const baseline: StagePredictions = {
+  anchor: baselinePredictions,
+  refine: null,
+};
+const refinedBaseline: StagePredictions = {
+  anchor: baselinePredictions,
+  refine: baselinePredictions,
+};
 const plan = perturbations(lyrics, truth);
+const song = { slug: "demo", truth };
+
+function refiningPredictor(): Predict {
+  return stagePredictor(new SecondsAnchorer(), [], {
+    refiner: new ShiftRefiner(),
+    request: refineBase,
+  });
+}
+
+describe("stagePredictor", () => {
+  test("anchors the lyrics with the given words and no ignored characters", async () => {
+    const anchorer = new SecondsAnchorer();
+    await stagePredictor(anchorer, [], null)(lyrics);
+    expect(anchorer.requests).toEqual([{ lyrics, words: [], ignored: [] }]);
+  });
+
+  test("gives the stage 1 predictions of the anchored lines", async () => {
+    const predictions = await stagePredictor(
+      new SecondsAnchorer(),
+      [],
+      null,
+    )(lyrics);
+    expect(predictions.anchor.map((p) => p.start)).toEqual(
+      truth.map((t) => t.start),
+    );
+  });
+
+  test("gives no stage 2 predictions without a refiner", async () => {
+    const predictions = await stagePredictor(
+      new SecondsAnchorer(),
+      [],
+      null,
+    )(lyrics);
+    expect(predictions.refine).toBeNull();
+  });
+
+  test("refines once, with the windows stage 1 found", async () => {
+    const refiner = new ShiftRefiner();
+    await stagePredictor(new SecondsAnchorer(), [], {
+      refiner,
+      request: refineBase,
+    })(lyrics);
+    expect(refiner.requests).toEqual([
+      {
+        ...refineBase,
+        lyrics,
+        windows: [1, 2, 3, 4].map((n) => ({
+          start: parseMs(n * 5000),
+          end: parseMs(n * 5000 + 500),
+        })),
+      },
+    ]);
+  });
+
+  test("gives the stage 2 predictions of the refined lines", async () => {
+    const predictions = await refiningPredictor()(lyrics);
+    expect(predictions.refine?.map((p) => p.start)).toEqual(
+      truth.map((t) => parseMs(t.start + 100)),
+    );
+  });
+});
 
 describe("runSongPerturbations", () => {
-  test("gives one record per perturbation", async () => {
-    const records = await runSongPerturbations(
-      new SecondsAnchorer(),
-      { slug: "demo", words: [], truth },
-      baseline,
-      plan,
-    );
-    expect(records).toHaveLength(plan.length);
+  const stageOne = stagePredictor(new SecondsAnchorer(), [], null);
+
+  test("gives one stage 1 record per perturbation", async () => {
+    const records = await runSongPerturbations(stageOne, song, baseline, plan);
+    expect(records.anchor).toHaveLength(plan.length);
   });
 
-  test("anchors each perturbed lyrics with no ignored characters", async () => {
-    const anchorer = new SecondsAnchorer();
-    await runSongPerturbations(
-      anchorer,
-      { slug: "demo", words: [], truth },
-      baseline,
-      plan,
-    );
-    expect(anchorer.requests.map((r) => r.ignored.length)).toEqual(
-      plan.map(() => 0),
-    );
+  test("gives no stage 2 records when the baseline has no stage 2", async () => {
+    const records = await runSongPerturbations(stageOne, song, baseline, plan);
+    expect(records.refine).toBeNull();
   });
 
-  test("sends the perturbed lyrics", async () => {
-    const anchorer = new SecondsAnchorer();
-    await runSongPerturbations(
-      anchorer,
-      { slug: "demo", words: [], truth },
-      baseline,
-      plan,
-    );
-    expect(anchorer.requests[0]?.lyrics).toEqual(plan[0]?.lyrics);
+  test("predicts each perturbed lyrics", async () => {
+    const seen: (readonly string[])[] = [];
+    const predict: Predict = async (perturbed) => {
+      seen.push(perturbed);
+      return stageOne(perturbed);
+    };
+    await runSongPerturbations(predict, song, baseline, plan);
+    expect(seen).toEqual(plan.map((p) => p.lyrics));
   });
 
   test("records the lines pushed off by a deletion", async () => {
-    const records = await runSongPerturbations(
-      new SecondsAnchorer(),
-      { slug: "demo", words: [], truth },
-      baseline,
-      plan,
-    );
+    const records = await runSongPerturbations(stageOne, song, baseline, plan);
     // Deleting line 1 moves every later line five seconds early in this fake.
-    const deleteFirst = records.find((r) => r.kind === "delete" && r.at === 1);
+    const deleteFirst = records.anchor.find(
+      (r) => r.kind === "delete" && r.at === 1,
+    );
     expect(deleteFirst?.collateralLines).toEqual([2, 3, 4]);
   });
 
-  test("names the song and the edit when the anchorer fails", async () => {
-    const failing: Anchorer = {
-      anchor: async () => {
-        throw new Error("boom");
-      },
-    };
-    const run = runSongPerturbations(
-      failing,
-      { slug: "demo", words: [], truth },
-      baseline,
+  test("gives one stage 2 record per perturbation when the baseline has stage 2", async () => {
+    const records = await runSongPerturbations(
+      refiningPredictor(),
+      song,
+      refinedBaseline,
       plan,
     );
+    expect(records.refine).toHaveLength(plan.length);
+  });
+
+  test("records the lines pushed off by a deletion in stage 2", async () => {
+    const records = await runSongPerturbations(
+      refiningPredictor(),
+      song,
+      refinedBaseline,
+      plan,
+    );
+    const deleteFirst = records.refine?.find(
+      (r) => r.kind === "delete" && r.at === 1,
+    );
+    expect(deleteFirst?.collateralLines).toEqual([2, 3, 4]);
+  });
+
+  test("names the song and the edit when the prediction fails", async () => {
+    const failing: Predict = async () => {
+      throw new Error("boom");
+    };
+    const run = runSongPerturbations(failing, song, baseline, plan);
     await expect(run).rejects.toThrow("demo: delete at line 1: boom");
+  });
+
+  test("throws when the baseline has stage 2 and the prediction has none", async () => {
+    const run = runSongPerturbations(stageOne, song, refinedBaseline, plan);
+    await expect(run).rejects.toThrow(
+      "demo: delete at line 1: no stage 2 predictions",
+    );
   });
 });
 
@@ -178,6 +290,26 @@ describe("formatPerturbationReport", () => {
     ]);
     expect(formatPerturbationReport(report)).toContain(
       "delete: 2 perturbations, over one 50.0% (1/2)",
+    );
+  });
+
+  test("starts with the default title", () => {
+    const report = buildPerturbationReport([
+      { slug: "demo", perturbations: [] },
+    ]);
+    expect(formatPerturbationReport(report)).toStartWith(
+      "Perturbation (collateral: a line good in the baseline that is no longer good)\n",
+    );
+  });
+
+  test("starts with the given title", () => {
+    const report = buildPerturbationReport([
+      { slug: "demo", perturbations: [] },
+    ]);
+    expect(
+      formatPerturbationReport(report, "Stage 2 perturbation"),
+    ).toStartWith(
+      "Stage 2 perturbation (collateral: a line good in the baseline that is no longer good)\n",
     );
   });
 });
