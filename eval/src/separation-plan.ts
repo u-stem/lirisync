@@ -1,8 +1,11 @@
-import { readdir, stat } from "node:fs/promises";
 import { join } from "node:path";
-
-/** The stem `lirisync-transcribe` reads by default; also what we write. */
-const VOCALS_STEM = "vocals";
+import {
+  listFiles,
+  pickByStem,
+  sameName,
+  VOCALS_STEM,
+  withStem,
+} from "./audio-files";
 
 export type PlanOptions = {
   /** Stem of the source file `audio/<stem>.*`. */
@@ -33,21 +36,6 @@ export type SeparationMeta = {
   worker: string;
 };
 
-/** Compared without case, as Windows file names are. */
-function sameName(a: string, b: string): boolean {
-  return a.toLowerCase() === b.toLowerCase();
-}
-
-/**
- * The name without its last extension, like `Path.stem` in Python. A leading
- * or trailing dot does not start an extension, so `vocals.meta.json` has the
- * stem `vocals.meta`.
- */
-function stemOf(name: string): string {
-  const dot = name.lastIndexOf(".");
-  return dot <= 0 || dot === name.length - 1 ? name : name.slice(0, dot);
-}
-
 function isWav(name: string): boolean {
   return name.toLowerCase().endsWith(".wav");
 }
@@ -64,41 +52,6 @@ export function assertPlanOptions(options: PlanOptions): void {
   }
 }
 
-/** Names of the regular files in `audioDir`, sorted. Links are followed. */
-async function listFiles(audioDir: string): Promise<string[]> {
-  let names: string[];
-  try {
-    names = await readdir(audioDir);
-  } catch (error) {
-    if (error instanceof Error && "code" in error && error.code === "ENOENT") {
-      return [];
-    }
-    throw error;
-  }
-  const files: string[] = [];
-  for (const name of names.sort()) {
-    const info = await stat(join(audioDir, name)).catch(() => null);
-    if (info?.isFile()) files.push(name);
-  }
-  return files;
-}
-
-function withStem(files: readonly string[], stem: string): string[] {
-  return files.filter((name) => sameName(stemOf(name), stem));
-}
-
-function pickInput(files: readonly string[], stem: string): string {
-  const found = withStem(files, stem);
-  const [first] = found;
-  if (first === undefined) {
-    throw new Error(`no audio file audio/${stem}.*`);
-  }
-  if (found.length > 1) {
-    throw new Error(`more than one audio/${stem}.* file: ${found.join(", ")}`);
-  }
-  return first;
-}
-
 /** Decides what to do with one song, from the files in its `audio/`. */
 async function decide(
   songsDir: string,
@@ -112,7 +65,7 @@ async function decide(
   if (current !== undefined && options.skipExisting) {
     return { kind: "skip", slug, existing: current };
   }
-  const inputName = pickInput(files, options.inputStem);
+  const inputName = pickByStem(files, options.inputStem);
   let outputName = `${VOCALS_STEM}.wav`;
   if (current !== undefined) {
     if (existing.length > 1) {

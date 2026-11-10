@@ -11,3 +11,9 @@ export type {
   AnchorRequest,
   AsrWord,
 } from "./ports/anchorer";
+export type {
+  LineWindow,
+  RefinedLine,
+  RefineRequest,
+  Refiner,
+} from "./ports/refiner";
