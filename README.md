@@ -30,6 +30,40 @@
 
 必要なもの：[bun](https://bun.sh/) 1.4 以降、[uv](https://docs.astral.sh/uv/) 0.13 以降。
 
+### Windows 機をまとめて整える
+
+Windows 機では、スクリプト 1 本で、ツールの導入から依存の取得、モデルの取得までを済ませられます。管理者権限は要りません。スクリプトは git を入れないので、先に git を入れ、クローンしたフォルダで実行します。
+
+1. git が入っていなければ、PowerShell で `winget install --id Git.Git -e` を実行して入れます。
+2. PowerShell を開き直し、`git clone https://github.com/u-stem/lirisync.git` でクローンして、そのフォルダに移ります。
+3. クローンしたフォルダで、スクリプトを実行します。
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\setup-windows.ps1
+```
+
+実行ポリシーはこの実行にだけ回避し、恒久的には変えません。何度実行してもかまいません。更新したいときは `git pull` をして、スクリプトをもう一度実行してください。入っているツールは飛ばし、取得済みで SHA-256 の合うモデルも取り直しません。
+
+| オプション | 既定値 | 内容 |
+| --- | --- | --- |
+| `-ModelsDir` | `C:\lirisync-models` | モデルの置き場所。分離モデルは `<ModelsDir>\separator`、文字 CTC モデルは `<ModelsDir>\aligner` に置きます |
+| `-SkipTools` | なし | winget を使いません。ツールは先に `PATH` に入れておいてください |
+| `-SkipModels` | なし | モデルを取得しません |
+
+スクリプトは、`PATH` に無いものだけを winget で入れます（git は手順 1 で入れるので対象外です）。
+
+| コマンド | winget の ID |
+| --- | --- |
+| `uv` | `astral-sh.uv` |
+| `bun` | `Oven-sh.Bun` |
+| `ffmpeg` | `Gyan.FFmpeg` |
+
+そのあと `bun install --frozen-lockfile` と、2 か所の `uv sync --locked` を動かし、2 つのモデルを取得します。入れた直後のツールを同じ実行で使えるよう、`PATH` はレジストリから読み直します。それでも見つからないときは、PowerShell を開き直して再実行してください。
+
+ffmpeg（Gyan のビルド）は開発用で、配布物には入りません。CUDA のドライバとライブラリは入れません。書き起こしを GPU で動かすときは、[eval/README.md](eval/README.md) の該当の節を見てください。
+
+### 手で行う場合
+
 ```sh
 # TypeScript
 bun install
