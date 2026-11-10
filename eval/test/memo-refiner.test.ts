@@ -62,7 +62,9 @@ describe("MemoRefiner", () => {
     const inner = new RecordingRefiner();
     const memo = new MemoRefiner(inner);
     await memo.refine(request());
-    await memo.refine(request({ windows: [window(0, 1000), null, null] }));
+    await memo.refine(
+      request({ windows: [window(0, 1000), window(2500, 3000), null] }),
+    );
     expect(inner.requests[1]?.lyrics).toEqual(["a", "b", "c"]);
   });
 
@@ -141,6 +143,46 @@ describe("MemoRefiner", () => {
     await memo.refine(request());
     await memo.refine(request({ audioPath: "other.wav" }));
     expect(inner.requests[1]?.windows).toEqual(request().windows);
+  });
+
+  test("sends the lines again when the model differs", async () => {
+    const inner = new RecordingRefiner();
+    const memo = new MemoRefiner(inner);
+    await memo.refine(request());
+    await memo.refine(request({ modelDir: "other-model" }));
+    expect(inner.requests[1]?.windows).toEqual(request().windows);
+  });
+
+  test("sends the lines again when the ignored characters differ", async () => {
+    const inner = new RecordingRefiner();
+    const memo = new MemoRefiner(inner);
+    await memo.refine(request());
+    await memo.refine(request({ ignored: ["x"] }));
+    expect(inner.requests[1]?.windows).toEqual(request().windows);
+  });
+
+  test("does not call the inner refiner when only lines without a window are new", async () => {
+    const inner = new RecordingRefiner();
+    const memo = new MemoRefiner(inner);
+    await memo.refine(request());
+    await memo.refine(request({ lyrics: ["a", "b", "new"] }));
+    expect(inner.requests).toHaveLength(1);
+  });
+
+  test("answers a line without a window with no_window", async () => {
+    const inner = new RecordingRefiner();
+    const lines = await new MemoRefiner(inner).refine(
+      request({ windows: [null, null, null] }),
+    );
+    expect(lines[0]).toEqual({ status: "no_window", skippedChars: 0 });
+  });
+
+  test("does not call the inner refiner when no line has a window", async () => {
+    const inner = new RecordingRefiner();
+    await new MemoRefiner(inner).refine(
+      request({ windows: [null, null, null] }),
+    );
+    expect(inner.requests).toHaveLength(0);
   });
 
   test("throws when the inner refiner returns another number of lines", async () => {

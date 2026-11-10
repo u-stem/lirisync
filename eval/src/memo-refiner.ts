@@ -5,6 +5,9 @@ import type {
   Refiner,
 } from "@lirisync/core";
 
+/** What the worker gives a line without a window: it reads nothing of the line. */
+const NO_WINDOW: RefinedLine = { status: "no_window", skippedChars: 0 };
+
 /**
  * Wraps a `Refiner` and remembers the result of each line.
  *
@@ -12,9 +15,10 @@ import type {
  * spelling, margin and ignored characters, a line's result depends only on its
  * text and window. So a line already answered need not be sent again. Every
  * call costs the audio decoding in the worker, so a call is made only when
- * some line is not remembered, and the remembered lines go with no window
- * (the worker does nothing for them); their results are replaced by the
- * remembered ones.
+ * some line with a window is not remembered, and the remembered lines go with
+ * no window (the worker does nothing for them); their results are replaced by
+ * the remembered ones. A line without a window is answered here, as the
+ * worker would answer it.
  */
 export class MemoRefiner implements Refiner {
   readonly #inner: Refiner;
@@ -34,6 +38,13 @@ export class MemoRefiner implements Refiner {
     const keys = lyrics.map((text, index) =>
       lineKey(request, text, windows[index] ?? null),
     );
+    // The worker answers a line without a window with `no_window` and does
+    // nothing else, so such a line needs no call.
+    for (const [index, key] of keys.entries()) {
+      if (windows[index] === null && !this.#memo.has(key)) {
+        this.#memo.set(key, NO_WINDOW);
+      }
+    }
     const known = keys.map((key) => this.#memo.has(key));
     if (known.every(Boolean)) {
       return this.#recall(keys);
