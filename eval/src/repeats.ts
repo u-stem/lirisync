@@ -2,15 +2,22 @@ import type { TruthLine } from "./labels";
 import { type Prediction, predictionsByLine } from "./metrics";
 
 /**
- * Line numbers (1-based) of lyric lines whose text appears more than once,
- * one group per distinct text. Text is compared after NFKC and trimming so
- * that width variants of the same line group together; anything finer is the
+ * The form in which two lyric lines count as the same text: NFKC, trimmed, so
+ * that width variants of the same line compare equal. Anything finer is the
  * aligner's job, not the evaluator's.
+ */
+export function normalizeLine(raw: string): string {
+  return raw.normalize("NFKC").trim();
+}
+
+/**
+ * Line numbers (1-based) of lyric lines whose text appears more than once,
+ * one group per distinct text (compared with `normalizeLine`).
  */
 export function repeatGroups(lyrics: string): number[][] {
   const linesByText = new Map<string, number[]>();
   lyrics.split(/\r?\n/).forEach((raw, index) => {
-    const text = raw.normalize("NFKC").trim();
+    const text = normalizeLine(raw);
     if (text === "") return;
     const lines = linesByText.get(text) ?? [];
     lines.push(index + 1);
