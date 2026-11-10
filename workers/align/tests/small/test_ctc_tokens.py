@@ -123,6 +123,33 @@ def test_surface_text_keeps_katakana_as_written() -> None:
     assert surface_text("カナ", NONE) == "カナ"
 
 
+@pytest.mark.parametrize(
+    ("written", "expected"),
+    [
+        ("ヮ", "ワ"),
+        ("ヰ", "イ"),
+        ("ヲ", "オ"),
+        ("ヵ", "カ"),
+        ("ヷ", "ヴァ"),
+        ("ヸ", "ヴィ"),
+        ("ヹ", "ヴェ"),
+        ("ヺ", "ヴォ"),
+        ("ㇰ", "ク"),
+        ("ㇷ", "フ"),
+        ("ㇿ", "ロ"),
+        ("ㇷ゚", "プ"),
+        ("ゎ", "わ"),
+        ("ゐ", "い"),
+        ("ゑ", "え"),
+        ("ゕ", "か"),
+        ("ゖ", "け"),
+        ("ゔ", "ヴ"),
+    ],
+)
+def test_surface_text_replaces_kana_the_model_has_no_token_for(written: str, expected: str) -> None:
+    assert surface_text(written, NONE) == expected
+
+
 # kana_text
 
 
@@ -186,6 +213,14 @@ def test_kana_text_drops_spaces_between_tokens() -> None:
         ("ヵ", "か"),
         ("ヶ", "け"),
         ("ヴ", "ヴ"),
+        ("ヷ", "ヴぁ"),
+        ("ヸ", "ヴぃ"),
+        ("ヹ", "ヴぇ"),
+        ("ヺ", "ヴぉ"),
+        ("ㇰ", "く"),
+        ("ㇷ", "ふ"),
+        ("ㇿ", "ろ"),
+        ("ㇷ゚", "ぷ"),
     ],
 )
 def test_kana_text_replaces_kana_the_model_has_no_token_for(reading: str, expected: str) -> None:

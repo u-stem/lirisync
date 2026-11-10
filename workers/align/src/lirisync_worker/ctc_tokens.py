@@ -24,11 +24,53 @@ from lirisync_worker.match_text import (
     strip_ignored,
 )
 
-# Kana that the model has no token for, and what they are sung as. Katakana are
-# shifted to hiragana first, so ヮ ヰ ヱ ヵ ヶ arrive here as ゎ ゐ ゑ ゕ ゖ. ゔ goes
-# the other way because ヴ (but not ゔ) is a token.
+# The small katakana extension (U+31F0..U+31FF) has no tokens and no small
+# hiragana counterparts, so each becomes its full-size kana. A following
+# combining semi-voiced mark then composes under NFC (ㇷ゚ -> フ゜ -> プ).
+_SMALL_KATAKANA_EXTENSION = "ㇰㇱㇲㇳㇴㇵㇶㇷㇸㇹㇺㇻㇼㇽㇾㇿ"
+_FULL_KATAKANA = "クシストヌハヒフヘホムラリルレロ"
+_FULL_HIRAGANA = "くしすとぬはひふへほむらりるれろ"
+
+# Kana that the model has no token for, and what they are sung as, for the
+# spelling that keeps katakana as written. ヷ..ヺ are written with ヴ, which is
+# a token (ゔ is not).
+_NO_TOKEN_SURFACE = str.maketrans(
+    {
+        "ゎ": "わ",
+        "ゐ": "い",
+        "ゑ": "え",
+        "ゕ": "か",
+        "ゖ": "け",
+        "ゔ": "ヴ",
+        "ヮ": "ワ",
+        "ヰ": "イ",
+        "ヲ": "オ",
+        "ヵ": "カ",
+        "ヷ": "ヴァ",
+        "ヸ": "ヴィ",
+        "ヹ": "ヴェ",
+        "ヺ": "ヴォ",
+    }
+    | dict(zip(_SMALL_KATAKANA_EXTENSION, _FULL_KATAKANA, strict=True))
+)
+
+# The same for the hiragana spelling. Katakana are shifted to hiragana first, so
+# ヮ ヰ ヱ ヵ ヶ arrive here as ゎ ゐ ゑ ゕ ゖ; ヷ..ヺ lie outside the shifted range
+# and arrive as they are. ゔ goes the other way because ヴ (but not ゔ) is a token.
 _NO_TOKEN_KANA = str.maketrans(
-    {"ゎ": "わ", "ゐ": "い", "ゑ": "え", "ゕ": "か", "ゖ": "け", "ゔ": "ヴ"}
+    {
+        "ゎ": "わ",
+        "ゐ": "い",
+        "ゑ": "え",
+        "ゕ": "か",
+        "ゖ": "け",
+        "ゔ": "ヴ",
+        "ヷ": "ヴぁ",
+        "ヸ": "ヴぃ",
+        "ヹ": "ヴぇ",
+        "ヺ": "ヴぉ",
+    }
+    | dict(zip(_SMALL_KATAKANA_EXTENSION, _FULL_HIRAGANA, strict=True))
 )
 
 
@@ -64,12 +106,13 @@ class CharVocab:
 
 
 def _surface_fold(text: str) -> str:
-    return strip_ignored(text.casefold(), frozenset())
+    kept = strip_ignored(text.casefold(), frozenset()).translate(_NO_TOKEN_SURFACE)
+    return unicodedata.normalize("NFC", kept)
 
 
 def _kana_fold(text: str) -> str:
     hiragana = katakana_to_hiragana(strip_ignored(text.casefold(), frozenset()))
-    return hiragana.translate(_NO_TOKEN_KANA)
+    return unicodedata.normalize("NFC", hiragana.translate(_NO_TOKEN_KANA))
 
 
 def surface_text(line: str, ignored: frozenset[str]) -> str:
@@ -77,7 +120,8 @@ def surface_text(line: str, ignored: frozenset[str]) -> str:
 
     Unlike `match_text.surface_form`, kana are not folded: the model has tokens
     for small kana, っ, ー and katakana, and dropping them would shorten the
-    spelling the singer actually produced.
+    spelling the singer actually produced. Kana without a token are
+    replaced; see `_NO_TOKEN_SURFACE`.
 
     々 is kept as it is, because the vocabulary has a token for it; the kana
     marks ゝ ゞ ヽ ヾ have none, so they are expanded to the kana they repeat.
@@ -92,6 +136,8 @@ def kana_text(line: str, read: Reader, ignored: frozenset[str]) -> str:
     A token without a reading keeps its surface. Tokens that are only symbols or
     ignored characters are skipped, so ☆ is not read as キゴウ (see
     `match_text.reading_chars`). Kana without a token are replaced; see
-    `_NO_TOKEN_KANA`.
+    `_NO_TOKEN_KANA`. NFC is applied once more to the joined text, because a
+    combining mark read as a token of its own only composes there.
     """
-    return "".join(ch for ch, _ in reading_chars([line], read, ignored, _kana_fold))
+    joined = "".join(ch for ch, _ in reading_chars([line], read, ignored, _kana_fold))
+    return unicodedata.normalize("NFC", joined)

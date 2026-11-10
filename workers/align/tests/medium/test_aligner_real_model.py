@@ -12,7 +12,7 @@ import numpy as np
 import pytest
 
 from lirisync_worker.ctc_model import BLANK, SAMPLE_RATE, CharCtcModel, frame_count, parse_vocab
-from lirisync_worker.ctc_tokens import CharVocab, kana_text
+from lirisync_worker.ctc_tokens import CharVocab, kana_text, surface_text
 from lirisync_worker.match_text import Token
 
 ENV_VAR = "LIRISYNC_ALIGNER_DIR"
@@ -31,6 +31,15 @@ GOJUON = (
     "がぎぐげご" "ざじずぜぞ" "だぢづでど" "ばびぶべぼ" "ぱぴぷぺぽ"
     "ぁぃぅぇぉ" "ゃゅょっー" "ゎゐゑゔゕゖ"
 )  # fmt: skip
+# Every kana letter, the long vowel mark, the small katakana extension (U+31F0..)
+# and a small katakana with a combining semi-voiced mark (ㇷ゚).
+ALL_KANA = (
+    "".join(chr(c) for c in range(0x3041, 0x3097))
+    + "".join(chr(c) for c in range(0x30A1, 0x30FB))
+    + "ー"
+    + "".join(chr(c) for c in range(0x31F0, 0x3200))
+    + "ㇷ\u309a"
+)
 # Hiragana the vocabulary lacks, and what `kana_text` writes in their place.
 NO_TOKEN_KANA = {"ゎ": "わ", "ゐ": "い", "ゑ": "え", "ゕ": "か", "ゖ": "け", "ゔ": "ヴ"}
 
@@ -119,3 +128,13 @@ def test_the_kanji_iteration_mark_has_a_token(model: CharCtcModel) -> None:
 
 def test_the_vocabulary_is_a_char_vocab(model: CharCtcModel) -> None:
     assert isinstance(model.vocab, CharVocab)
+
+
+def test_surface_text_leaves_no_kana_without_a_token(model: CharCtcModel) -> None:
+    assert model.vocab.encode(surface_text(ALL_KANA, frozenset())).skipped == ""
+
+
+def test_kana_text_leaves_no_kana_without_a_token(model: CharCtcModel) -> None:
+    text = kana_text(ALL_KANA, CharReader(), frozenset())
+
+    assert model.vocab.encode(text).skipped == ""

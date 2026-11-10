@@ -10,7 +10,7 @@ different kanji or kana for the same sound (and ateji such as 運命 sung as
 import unicodedata
 from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass
-from functools import cache
+from functools import lru_cache
 
 
 @dataclass(frozen=True)
@@ -156,7 +156,9 @@ def _fold(text: str) -> str:
     return fold_kana(strip_ignored(text.casefold(), frozenset()))
 
 
-@cache
+# Bounded: the key includes `fold`, so a caller passing fresh closures would
+# otherwise grow the cache without limit.
+@lru_cache(maxsize=64)
 def _folded_ignored(ignored: frozenset[str], fold: Fold) -> frozenset[str]:
     """The user's extra characters, normalized the same way as the text.
 
