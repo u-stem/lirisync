@@ -1,6 +1,6 @@
 import { existsSync } from "node:fs";
 import { mkdir } from "node:fs/promises";
-import { delimiter, resolve } from "node:path";
+import { delimiter, join, resolve } from "node:path";
 import { parseArgs } from "node:util";
 import { assertModelFile } from "./src/model-file";
 import {
@@ -18,6 +18,7 @@ import {
 } from "./src/pipeline-plan";
 import { assertAlignerModelDir } from "./src/refine-options";
 import { openRunLog } from "./src/run-log";
+import { checkSongFiles, listSongFiles } from "./src/song-files";
 import { listSongs, selectSongs } from "./src/song-set";
 import { teeStream } from "./src/tee";
 
@@ -37,8 +38,45 @@ function log(text: string): void {
   toLog(text);
 }
 
-/** Checks the inputs of every step, so a wrong path fails before hours of work. */
-async function assertReady(options: PipelineOptions): Promise<void> {
+/**
+ * Lists what each song lacks. Throws when a song cannot be separated; returns
+ * whether every song has what the eval steps read.
+ */
+async function checkSongs(
+  songsDir: string,
+  slugs: readonly string[],
+): Promise<boolean> {
+  log("==> Checking songs\n");
+  let blocked = false;
+  let labelsReady = true;
+  for (const slug of slugs) {
+    const problems = checkSongFiles(await listSongFiles(join(songsDir, slug)));
+    if (problems.length === 0) log(`    ${slug}: ok\n`);
+    for (const problem of problems) {
+      const hint = problem.hint === null ? "" : ` (${problem.hint})`;
+      log(`    ${slug}: no ${problem.file}${hint}\n`);
+      if (problem.blocking) blocked = true;
+      else labelsReady = false;
+    }
+  }
+  if (blocked) {
+    throw new Error(
+      `cannot separate the songs above. See "曲の置き方" in eval/README.md, or add songs with bun run eval:add-song`,
+    );
+  }
+  if (!labelsReady) {
+    log(
+      "    Separation and transcription run now; the eval steps wait for the files above\n",
+    );
+  }
+  return labelsReady;
+}
+
+/**
+ * Checks the inputs of every step, so a wrong path fails before hours of work.
+ * Returns whether the eval steps can run.
+ */
+async function assertReady(options: PipelineOptions): Promise<boolean> {
   // Transcription runs on uv after separation, which takes long; check it now.
   if (Bun.which("uv") === null) {
     throw new Error(
@@ -53,7 +91,7 @@ async function assertReady(options: PipelineOptions): Promise<void> {
       `${reason}. See "曲の置き方" in eval/README.md for how to put songs in`,
     );
   });
-  selectSongs(slugs, options.songs);
+  return checkSongs(options.songsDir, selectSongs(slugs, options.songs));
 }
 
 async function runStep(
@@ -107,11 +145,16 @@ async function main(): Promise<void> {
     strict: true,
   });
   const options = parsePipelineOptions(values, process.platform, repoRoot);
-  await assertReady(options);
+  const labelsReady = await assertReady(options);
   await mkdir(options.outDir, { recursive: true });
 
   const steps = pipelineSteps(options);
   for (const [i, step] of steps.entries()) {
+    if (step.needsLabels && !labelsReady) {
+      throw new Error(
+        "separated and transcribed; the eval steps need lyrics.txt and labels.txt in every song (listed under Checking songs). Add them and run again",
+      );
+    }
     await runStep(step, i + 1, steps.length, repoRoot);
   }
   log("Wrote:\n");

@@ -87,6 +87,12 @@ describe("loadSong", () => {
     expect(song.lyrics).toEqual(["first", "second"]);
   });
 
+  test("drops a byte order mark at the start of the lyrics", async () => {
+    await addSong("a", { lyrics: "\uFEFFfirst\nsecond\n" });
+    const song = await loadSong(dir, "a", "demo");
+    expect(song.lyrics[0]).toBe("first");
+  });
+
   test("keeps the lyrics text for repeat detection", async () => {
     await addSong("a");
     const song = await loadSong(dir, "a", "demo");

@@ -12,6 +12,7 @@
     "typecheck": "bun run --filter '*' typecheck && tsc -p scripts",
     "test": "bun test",
     "eval": "bun eval/run.ts",
+    "eval:add-song": "bun eval/add-song.ts",
     "eval:all": "bun eval/pipeline.ts",
     "eval:labels": "bun eval/labels-from-exo.ts",
     "eval:log": "bun eval/copy-log.ts",
