@@ -104,20 +104,33 @@ export function checkSongFiles(files: readonly string[]): SongFileProblem[] {
   ].filter((problem) => problem !== null);
 }
 
-/** The files under `dir`, relative and with `/` separators, as `checkSongFiles` takes them. */
-export async function listSongFiles(dir: string): Promise<string[]> {
-  const entries = await readdir(dir, { recursive: true, withFileTypes: true });
-  const paths: string[] = [];
-  for (const entry of entries) {
-    // Links are followed, as the separation's file listing does.
-    const target = entry.isSymbolicLink()
-      ? await stat(join(entry.parentPath, entry.name)).catch(() => null)
-      : null;
-    if (!entry.isFile() && target?.isFile() !== true) continue;
-    const relative = entry.parentPath.slice(dir.length).replace(/^[\\/]+/, "");
-    const path = relative === "" ? entry.name : `${relative}/${entry.name}`;
-    paths.push(path.replaceAll("\\", "/"));
+/** Deep enough for `audio/`; a bound, so a link loop ends. */
+const MAX_DEPTH = 4;
+
+async function walk(
+  dir: string,
+  prefix: string,
+  depth: number,
+  out: string[],
+): Promise<void> {
+  for (const name of await readdir(dir)) {
+    // stat follows links, to files and to folders, as separation's listing does.
+    const info = await stat(join(dir, name)).catch(() => null);
+    if (info?.isFile() === true) {
+      out.push(`${prefix}${name}`);
+    } else if (info?.isDirectory() === true && depth < MAX_DEPTH) {
+      await walk(join(dir, name), `${prefix}${name}/`, depth + 1, out);
+    }
   }
+}
+
+/**
+ * The files under `dir`, relative and with `/` separators, as
+ * `checkSongFiles` takes them. Links are followed up to a few levels deep.
+ */
+export async function listSongFiles(dir: string): Promise<string[]> {
+  const paths: string[] = [];
+  await walk(dir, "", 1, paths);
   return paths.sort();
 }
 

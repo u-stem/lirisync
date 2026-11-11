@@ -219,6 +219,33 @@ describe("listSongFiles", () => {
     }
   });
 
+  test("follows a symbolic link to a folder", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "song-files-"));
+    try {
+      await mkdir(join(dir, "elsewhere"));
+      await writeFile(join(dir, "elsewhere", "mix.wav"), "");
+      await symlink(join(dir, "elsewhere"), join(dir, "audio"));
+      expect(await listSongFiles(dir)).toEqual([
+        "audio/mix.wav",
+        "elsewhere/mix.wav",
+      ]);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("stops at a link loop", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "song-files-"));
+    try {
+      await writeFile(join(dir, "labels.txt"), "");
+      await symlink(dir, join(dir, "loop"));
+      const files = await listSongFiles(dir);
+      expect(files.includes("labels.txt")).toBe(true);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
   test("lists nested files with slashes, sorted", async () => {
     const dir = await mkdtemp(join(tmpdir(), "song-files-"));
     try {
