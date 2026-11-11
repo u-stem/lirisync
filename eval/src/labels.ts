@@ -85,3 +85,12 @@ export function assertLabelsSung(labels: TruthLine[], lyrics: string): void {
     }
   }
 }
+
+/** The 1-based lines of `lyrics.txt` that are sung (not blank) but have no label. */
+export function unlabeledLines(labels: TruthLine[], lyrics: string): number[] {
+  const labeled = new Set(labels.map((label) => label.line));
+  return splitLyricsLines(lyrics)
+    .map((text, index) => ({ text, line: index + 1 }))
+    .filter(({ text, line }) => text.trim() !== "" && !labeled.has(line))
+    .map(({ line }) => line);
+}

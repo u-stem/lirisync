@@ -4,6 +4,7 @@ import {
   assertLabelsSung,
   parseAudacityLabels,
   splitLyricsLines,
+  unlabeledLines,
 } from "../src/labels";
 
 describe("parseAudacityLabels", () => {
@@ -107,5 +108,13 @@ describe("splitLyricsLines", () => {
 
   test("accepts CRLF line endings", () => {
     expect(splitLyricsLines("a\r\nb\r\n")).toEqual(["a", "b"]);
+  });
+});
+
+describe("unlabeledLines", () => {
+  test("lists the sung lines without a label", () => {
+    const lyrics = "a\n\nb\nc\n";
+    const missing = unlabeledLines([{ line: 3, start: parseMs(0) }], lyrics);
+    expect(missing).toEqual([1, 4]);
   });
 });
