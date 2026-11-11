@@ -23,3 +23,14 @@ def test_spaces_and_stars_do_not_read_as_kigou(reader: SudachiReader) -> None:
 
 def test_full_width_digits_are_read(reader: SudachiReader) -> None:
     assert reading_form("２人で", reader, frozenset()) == "ふたりで"
+
+
+@pytest.mark.parametrize(
+    ("text", "reading"),
+    # The match form folds small kana, so っ is gone from やっても.
+    [("何をやっても", "なにをやても"), ("何が", "なにが"), ("何でも", "なんでも")],
+)
+def test_reads_a_lone_nani_before_wo_and_ga_only(
+    reader: SudachiReader, text: str, reading: str
+) -> None:
+    assert reading_form(text, reader, frozenset()) == reading
