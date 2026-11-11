@@ -62,6 +62,14 @@ function ms(value: number | null): string {
   return value === null ? MISSING : `${Math.round(value)} ms`;
 }
 
+/** A signed duration: `+120 ms`, `-80 ms`, `0 ms`. */
+function signedMs(value: number | null): string {
+  if (value === null) return MISSING;
+  const rounded = Math.round(value);
+  const sign = rounded > 0 ? "+" : rounded < 0 ? "-" : "";
+  return `${sign}${Math.abs(rounded)} ms`;
+}
+
 function percent(value: number | null): string {
   return value === null ? MISSING : `${(value * 100).toFixed(1)}%`;
 }
@@ -80,6 +88,7 @@ export function formatReport(report: Report): string {
         `(${percent(song.score.matchRate)}), ` +
         `median ${ms(song.score.medianStartErrorMs)}, ` +
         `P90 ${ms(song.errors.p90StartErrorMs)}, ` +
+        `bias ${signedMs(song.errors.medianSignedErrorMs)}, ` +
         `gross ${percent(song.errors.grossErrorRate)}`,
     );
   }
@@ -89,6 +98,7 @@ export function formatReport(report: Report): string {
     `  Matched: ${overall.score.matched}/${overall.score.labeled} (${percent(overall.score.matchRate)})`,
     `  Median start error: ${ms(overall.score.medianStartErrorMs)}`,
     `  P90 start error: ${ms(overall.errors.p90StartErrorMs)}`,
+    `  Bias (predicted - true, median): ${signedMs(overall.errors.medianSignedErrorMs)}`,
     `  Gross error rate: ${percent(overall.errors.grossErrorRate)}`,
     `  Silent error rate: ${percent(overall.errors.silentErrorRate)}`,
     `  Confidence AUROC: ${auroc(overall.errors.confidenceAuroc)}`,

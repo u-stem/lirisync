@@ -26,7 +26,8 @@ export type Score = {
 export const MAX_MEDIAN_START_ERROR_MS = 500;
 export const MIN_MATCH_RATE = 0.85;
 
-function median(values: number[]): number | null {
+/** The middle value (the mean of the two middle ones for an even count), or null when empty. */
+export function median(values: number[]): number | null {
   const sorted = [...values].sort((a, b) => a - b);
   const middle = Math.floor(sorted.length / 2);
   const upper = sorted[middle];
