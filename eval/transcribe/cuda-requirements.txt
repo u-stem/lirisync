@@ -1,0 +1,9 @@
+# NVIDIA CUDA 12 libraries that ctranslate2 loads for `--device cuda` on Windows.
+# They are under NVIDIA's license, so they stay out of uv.lock and the repository:
+# scripts/setup-windows.ps1 installs them into <ModelsDir>\cuda on the machine that
+# runs the evaluation, and `bun run eval:all` puts their bin directories on PATH.
+# Only the Windows wheels are pinned. See docs/dependencies.md.
+nvidia-cublas-cu12==12.9.1.4 --hash=sha256:1e5fee10662e6e52bd71dec533fbbd4971bb70a5f24f3bc3793e5c2e9dc640bf
+nvidia-cudnn-cu12==9.26.1.1 --hash=sha256:2851d729c89d6fbc18c8ce3915ec9fc82cea321beb951cc1a532aca05be3c2f6
+# cuDNN's runtime-compiled engines load NVRTC.
+nvidia-cuda-nvrtc-cu12==12.9.86 --hash=sha256:72972ebdcf504d69462d3bcd67e7b81edd25d0fb85a2c46d3ea3517666636349

@@ -1,11 +1,13 @@
 import { describe, expect, test } from "bun:test";
 import { join, resolve } from "node:path";
 import {
+  cudaLibraryDirs,
   logHeader,
   type PipelineOptions,
   parsePipelineOptions,
   pipelineLogPath,
   pipelineSteps,
+  prependPath,
   stepEnv,
 } from "../src/pipeline-plan";
 
@@ -20,6 +22,7 @@ function options(overrides: Partial<PipelineOptions> = {}): PipelineOptions {
     outDir: resolve("out"),
     songsDir: resolve("songs"),
     songs: undefined,
+    device: undefined,
     repoRoot: REPO,
     ...overrides,
   };
@@ -119,6 +122,22 @@ describe("parsePipelineOptions", () => {
   test("keeps the given songs", () => {
     const parsed = parsePipelineOptions({ song: ["a", "b"] }, "win32", REPO);
     expect(parsed.songs).toEqual(["a", "b"]);
+  });
+
+  test("leaves the device unset by default", () => {
+    const parsed = parsePipelineOptions({}, "win32", REPO);
+    expect(parsed.device).toBeUndefined();
+  });
+
+  test("keeps a given device", () => {
+    const parsed = parsePipelineOptions({ device: "cpu" }, "win32", REPO);
+    expect(parsed.device).toBe("cpu");
+  });
+
+  test("rejects an unknown device", () => {
+    expect(() =>
+      parsePipelineOptions({ device: "gpu" }, "win32", REPO),
+    ).toThrow("--device must be auto, cpu or cuda");
   });
 
   test("carries the repository root", () => {
@@ -230,6 +249,28 @@ describe("pipelineSteps", () => {
     expect(tails).toEqual([songArgs, songArgs, songArgs, songArgs]);
   });
 
+  test("passes a given device to transcribe", () => {
+    const transcribe = pipelineSteps(options({ device: "cpu" }))[1];
+    expect(transcribe?.args.slice(-2)).toEqual(["--device", "cpu"]);
+  });
+
+  test("adds no --device flag without a device", () => {
+    const steps = pipelineSteps(options());
+    expect(steps.some((step) => step.args.includes("--device"))).toBe(false);
+  });
+
+  test("puts the CUDA libraries on PATH for transcribe", () => {
+    const opts = options();
+    const transcribe = pipelineSteps(opts)[1];
+    expect(transcribe?.pathPrepend).toEqual(cudaLibraryDirs(opts.modelsDir));
+  });
+
+  test("puts nothing on PATH for the other steps", () => {
+    const steps = pipelineSteps(options());
+    const others = [steps[0], steps[2], steps[3]];
+    expect(others.map((step) => step?.pathPrepend)).toEqual([[], [], []]);
+  });
+
   test("adds no --song flag without songs", () => {
     const steps = pipelineSteps(options());
     expect(steps.some((step) => step.args.includes("--song"))).toBe(false);
@@ -292,5 +333,43 @@ describe("logHeader", () => {
     expect(header.split("\n")[0]).toBe(
       '# bun run eval:all --songs-dir "C:\\My Songs"',
     );
+  });
+});
+
+describe("cudaLibraryDirs", () => {
+  test("lists the bin directories of the NVIDIA wheels", () => {
+    const models = resolve("models");
+    expect(cudaLibraryDirs(models)).toEqual([
+      join(models, "cuda", "nvidia", "cublas", "bin"),
+      join(models, "cuda", "nvidia", "cudnn", "bin"),
+      join(models, "cuda", "nvidia", "cuda_nvrtc", "bin"),
+    ]);
+  });
+});
+
+describe("prependPath", () => {
+  test("puts the directories before the existing entries", () => {
+    const env = prependPath({ PATH: "/bin" }, ["/a", "/b"], ":");
+    expect(env.PATH).toBe("/a:/b:/bin");
+  });
+
+  test("keeps the spelling of the existing key", () => {
+    const env = prependPath({ Path: "C:\\bin" }, ["C:\\a"], ";");
+    expect(env).toEqual({ Path: "C:\\a;C:\\bin" });
+  });
+
+  test("folds other spellings of the key into one", () => {
+    const env = prependPath({ Path: "C:\\x", PATH: "C:\\y" }, ["C:\\a"], ";");
+    expect(env).toEqual({ Path: "C:\\a;C:\\x" });
+  });
+
+  test("creates PATH when there is none", () => {
+    const env = prependPath({ HOME: "/h" }, ["/a"], ":");
+    expect(env).toEqual({ HOME: "/h", PATH: "/a" });
+  });
+
+  test("leaves the environment as it is without directories", () => {
+    const env = prependPath({ PATH: "/bin" }, [], ":");
+    expect(env).toEqual({ PATH: "/bin" });
   });
 });

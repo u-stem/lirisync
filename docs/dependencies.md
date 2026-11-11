@@ -76,7 +76,7 @@ sudachipy は型スタブ（`sudachipy.pyi`）を同梱するが `py.typed` が�
 評価用の書き起こしを作る `eval/transcribe`（faster-whisper で各曲の音声を書き起こす）の依存。配布版にもワーカーにも入らず、ライセンス検査の対象外である。上の採用基準のうち、ライセンスを満たさないものがあるが、評価用のコードに限って使う。
 
 - faster-whisper は PyAV（`av`）を無条件に import する。PyAV の wheel は FFmpeg を同梱する。macOS 版の wheel の同梱物（`.dylibs`）には、LGPL の部分に加えて `libx264` と `libx265`（GPL）が入っているのを確かめた。Windows 版の中身は確かめていないが、配布物には入れられない
-- GPU で動かすときは、ctranslate2 が NVIDIA の CUDA ライブラリを要求する。これは NVIDIA の独自ライセンスで、再配布できない
+- GPU で動かすときは、ctranslate2 が NVIDIA の CUDA ライブラリを要求する。これは NVIDIA の独自ライセンスで、再配布できない。そのため `uv.lock` には入れず、下の「CUDA のライブラリ」のとおり、評価を動かす Windows 機に `scripts/setup-windows.ps1` が取ってくる
 
 | パッケージ | 版 | 区分 | ライセンス | 最終リリース | 用途 | 代替 |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -100,6 +100,21 @@ faster-whisper の最終リリースは 2025-10-31 で 12 か月を超えたが�
 faster-whisper 1.2.1 は `av.open(metadata_errors=...)` を呼ぶが、PyAV 19 でこの引数がなくなった（18.1.0 は受け付け、19.0.0 は `TypeError`）。faster-whisper の要求は `av>=11` だけなので、`eval/transcribe/pyproject.toml` で `av>=16,<19` に絞っている。faster-whisper を更新するときは、この上限を外せるか確かめる。
 
 確認日は 2026-11-10。
+
+### CUDA のライブラリ（Windows の GPU での書き起こし用）
+
+`eval/transcribe/cuda-requirements.txt` で、版と Windows の wheel の SHA-256 を固定する。`scripts/setup-windows.ps1` が `uv pip install --target <ModelsDir>\cuda --no-deps --require-hashes` で入れる。`bun run eval:all` は、`nvidia/<名前>/bin` を書き起こしの `PATH` に足す。ctranslate2 は、これらの DLL をパッケージのディレクトリからは探さず、名前で読み込むためである。
+
+| パッケージ | 版 | 区分 | ライセンス | 最終リリース | 用途 | 代替 |
+| --- | --- | --- | --- | --- | --- | --- |
+| nvidia-cublas-cu12 | 12.9.1.4 | 評価（Windows の GPU） | LicenseRef-NVIDIA-Proprietary | 2025-06-05 | ctranslate2 の行列演算（`cublas64_12.dll`） | NVIDIA の CUDA Toolkit のインストーラ（数 GB）/ CPU で動かす |
+| nvidia-cudnn-cu12 | 9.26.1.1 | 評価（Windows の GPU） | NVIDIA のライセンス（PyPI のメタデータに記載なし。wheel の `License.txt`） | 2026-10-07 | ctranslate2 の畳み込み（`cudnn64_9.dll`） | NVIDIA の cuDNN のインストーラ / CPU で動かす |
+| nvidia-cuda-nvrtc-cu12 | 12.9.86 | 評価（Windows の GPU） | LicenseRef-NVIDIA-Proprietary | 2025-06-05 | cuDNN の実行時コンパイルのエンジンが読み込む | なし（cuDNN が要求する） |
+
+- 版は、ctranslate2 4.8.5 が読む `cublas64_12.dll`（CUDA 12）と cuDNN 9 に合わせ、公開から 2 週間以上たったものから選んだ
+- `--no-deps` で入れるので、依存は自動では入らない。cuDNN が要求する cuBLAS と、実行時コンパイルのエンジンが読む NVRTC は、明示して固定した
+- 3 つの wheel の中の DLL の場所（`nvidia/cublas/bin`、`nvidia/cudnn/bin`、`nvidia/cuda_nvrtc/bin`）は、wheel の目次で確かめた
+- 確認日は 2026-11-11
 
 ## 移植したアルゴリズム
 
