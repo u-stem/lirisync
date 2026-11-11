@@ -11,8 +11,8 @@ import { parseAudacityLabels } from "../src/labels";
 /** `text` as ExEdit stores it: UTF-16LE in hex, padded with zeros. */
 function hexText(text: string): string {
   let hex = "";
-  for (const unit of text) {
-    const code = unit.charCodeAt(0);
+  for (let i = 0; i < text.length; i++) {
+    const code = text.charCodeAt(i);
     hex += (code & 0xff).toString(16).padStart(2, "0");
     hex += (code >> 8).toString(16).padStart(2, "0");
   }
@@ -20,7 +20,14 @@ function hexText(text: string): string {
 }
 
 type Obj =
-  | { kind: "audio"; start: number; position?: string; speed?: string }
+  | {
+      kind: "audio";
+      start: number;
+      /** null leaves the key out. */
+      position?: string | null;
+      speed?: string;
+    }
+  | { kind: "filter"; start: number }
   | { kind: "text"; start: number; text: string };
 
 function exo(objects: Obj[], rate = 60, scale = 1): string {
@@ -40,11 +47,22 @@ function exo(objects: Obj[], rate = 60, scale = 1): string {
         "audio=1",
         `[${index}.0]`,
         "_name=音声ファイル",
-        `再生位置=${obj.position ?? "0.00"}`,
+        ...(obj.position === null
+          ? []
+          : [`再生位置=${obj.position ?? "0.00"}`]),
         `再生速度=${obj.speed ?? "100.0"}`,
         "file=D:\\songs\\song01\\audio\\mix.wav",
         `[${index}.1]`,
         "_name=標準再生",
+      );
+    } else if (obj.kind === "filter") {
+      lines.push(
+        "layer=3",
+        "audio=1",
+        `[${index}.0]`,
+        "_name=音声ディレイ",
+        "強さ=100.0",
+        "遅延=100.0",
       );
     } else {
       lines.push(
@@ -62,7 +80,7 @@ function exo(objects: Obj[], rate = 60, scale = 1): string {
   return `${lines.join("\r\n")}\r\n`;
 }
 
-const AUDIO: Obj = { kind: "audio", start: parseMs(61) };
+const AUDIO: Obj = { kind: "audio", start: 61 };
 
 function labelsOf(objects: Obj[], rate?: number, scale?: number) {
   return exoLabels(parseExo(exo(objects, rate, scale)));
@@ -102,10 +120,10 @@ describe("exoLabels", () => {
   });
 
   test("rounds half a millisecond up", () => {
-    // 1 frame at 8 fps is 125 ms; at scale 1 and rate 16 it is 62.5 ms.
+    // 1 frame at 16 fps (rate 16, scale 1) is 62.5 ms.
     const labels = labelsOf(
       [
-        { kind: "audio", start: parseMs(1) },
+        { kind: "audio", start: 1 },
         { kind: "text", start: 2, text: "1" },
       ],
       16,
@@ -117,7 +135,7 @@ describe("exoLabels", () => {
     // 30000/1001 fps: 30 frames are 1001 ms.
     const labels = labelsOf(
       [
-        { kind: "audio", start: parseMs(1) },
+        { kind: "audio", start: 1 },
         { kind: "text", start: 31, text: "1" },
       ],
       30000,
@@ -179,6 +197,21 @@ describe("exoLabels", () => {
     );
   });
 
+  test("does not count an audio filter as the song", () => {
+    const labels = labelsOf([
+      AUDIO,
+      { kind: "filter", start: 61 },
+      { kind: "text", start: 121, text: "1" },
+    ]);
+    expect(labels).toEqual([{ line: 1, start: parseMs(1000) }]);
+  });
+
+  test("rejects audio without a play position", () => {
+    expect(() =>
+      labelsOf([{ kind: "audio", start: 1, position: null }]),
+    ).toThrow("object [0]: audio has no play speed or play position");
+  });
+
   test("rejects a project with two audio objects", () => {
     expect(() => labelsOf([AUDIO, AUDIO])).toThrow(
       "expected one audio object, found 2",
@@ -199,6 +232,12 @@ describe("exoLabels", () => {
 describe("parseExo", () => {
   test("rejects a file without the exedit header", () => {
     expect(() => parseExo("[0]\r\nstart=1\r\n")).toThrow("[exedit]");
+  });
+
+  test("rejects an object start that is not a positive integer", () => {
+    expect(() =>
+      parseExo("[exedit]\r\nrate=60\r\nscale=1\r\n[0]\r\nstart=0\r\n"),
+    ).toThrow("object [0]: start must be a positive integer");
   });
 
   test("rejects a frame rate that is not a positive integer", () => {

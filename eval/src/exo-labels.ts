@@ -8,7 +8,7 @@ export type ExoObject = {
   index: string;
   /** First frame, 1-based as ExEdit counts. */
   start: number;
-  /** Whether the object header says `audio=1`. */
+  /** Whether the object header says `audio=1` (audio files and audio filters). */
   audio: boolean;
   parts: Map<string, string>[];
 };
@@ -115,7 +115,13 @@ function partWith(
 
 /** Where the song's 0 ms is on the timeline: the audio object's start, less its play position. */
 function audioOrigin(project: ExoProject): { start: number; position: Ms } {
-  const audios = project.objects.filter((object) => object.audio);
+  // Audio filter objects (delay and so on) are `audio=1` too; only an audio
+  // file object is the song.
+  const audios = project.objects.filter(
+    (object) =>
+      object.audio &&
+      object.parts.some((part) => part.get("_name") === "音声ファイル"),
+  );
   const [audio] = audios;
   if (audio === undefined || audios.length !== 1) {
     throw new Error(

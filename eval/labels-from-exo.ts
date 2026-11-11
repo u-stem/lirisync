@@ -60,7 +60,9 @@ async function main(): Promise<void> {
 
   const text = formatAudacityLabels(labels);
   // What `bun run eval` will read must give back the same labels.
-  parseAudacityLabels(text);
+  if (!Bun.deepEquals(parseAudacityLabels(text), labels)) {
+    throw new Error("labels.txt would not read back as the same labels");
+  }
   const out = join(songDir, "labels.txt");
   await writeFile(out, text, { flag: values.overwrite ? "w" : "wx" }).catch(
     (error: unknown) => {
