@@ -58,6 +58,19 @@ describe("formatReport", () => {
     expect(text).toContain("  Bias (predicted - true, median): +100 ms");
   });
 
+  test("shows a zero bias without a sign", () => {
+    const exact = result("exact", [1000, 2000, 3000], [1000, 2000, 3000]);
+    const text = formatReport(buildReport([exact]));
+    expect(text).toContain("bias 0 ms");
+  });
+
+  test("shows a bias that rounds to minus zero without a sign", () => {
+    // The median of -1 and 0 is -0.5, which Math.round makes -0.
+    const nearly = result("nearly", [1000, 2000], [999, 2000], "a\nb\n");
+    const text = formatReport(buildReport([nearly]));
+    expect(text).toContain("bias 0 ms");
+  });
+
   test("shows an early bias with a minus sign", () => {
     const early = result("early", [1000, 2000, 3000], [900, 1950, 2900]);
     const text = formatReport(buildReport([early]));
