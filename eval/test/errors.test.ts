@@ -30,6 +30,23 @@ function runWithErrors(errors: number[], confidences?: number[]): SongRun {
 }
 
 describe("errorProfile", () => {
+  test("spreads the confidence of the matched lines", () => {
+    const run = runWithErrors([0, 0, 0], [0.2, 0.9, 0.5]);
+    const result = errorProfile([run], { highConfidence: 0.8 });
+    expect(result.confidenceSpread).toEqual({
+      min: 0.2,
+      median: 0.5,
+      max: 0.9,
+      high: 1,
+      lines: 3,
+    });
+  });
+
+  test("has no confidence spread when the aligner reports none", () => {
+    const result = errorProfile([runWithErrors([0, 0])]);
+    expect(result.confidenceSpread).toBeNull();
+  });
+
   test("the bias is the median of predicted minus true", () => {
     const result = errorProfile([runWithErrors([-300, -100, 50])]);
     expect(result.medianSignedErrorMs).toBe(-100);

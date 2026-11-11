@@ -1,4 +1,9 @@
-import { type ErrorProfile, errorProfile } from "./errors";
+import {
+  type ConfidenceSpread,
+  DEFAULT_HIGH_CONFIDENCE,
+  type ErrorProfile,
+  errorProfile,
+} from "./errors";
 import type { TruthLine } from "./labels";
 import {
   type Prediction,
@@ -78,6 +83,15 @@ function auroc(value: number | null): string {
   return value === null ? MISSING : value.toFixed(3);
 }
 
+function spread(value: ConfidenceSpread | null): string {
+  if (value === null) return MISSING;
+  const { min, median, max, high, lines } = value;
+  return (
+    `${min.toFixed(3)} / ${median.toFixed(3)} / ${max.toFixed(3)}, ` +
+    `${high}/${lines} at or above ${DEFAULT_HIGH_CONFIDENCE}`
+  );
+}
+
 /** A plain-text summary: one row per song, then the pooled block. */
 export function formatReport(report: Report): string {
   const { overall, songs } = report;
@@ -102,6 +116,7 @@ export function formatReport(report: Report): string {
     `  Gross error rate: ${percent(overall.errors.grossErrorRate)}`,
     `  Silent error rate: ${percent(overall.errors.silentErrorRate)}`,
     `  Confidence AUROC: ${auroc(overall.errors.confidenceAuroc)}`,
+    `  Confidence (min / median / max): ${spread(overall.errors.confidenceSpread)}`,
     `  Repeat confusion: ${percent(overall.repeats.rate)} (${overall.repeats.confused}/${overall.repeats.considered})`,
     "",
     `Gate: ${overall.passesGate ? "PASS" : "FAIL"}`,
