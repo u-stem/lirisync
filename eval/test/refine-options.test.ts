@@ -17,6 +17,31 @@ describe("parseRefineOptions", () => {
     expect(parseRefineOptions({ refine: "m" })?.spelling).toBe("surface");
   });
 
+  test("defaults the margin before the window to the margin", () => {
+    const options = parseRefineOptions({ refine: "m", "margin-ms": "800" });
+    expect(options?.marginBefore).toBe(parseMs(800));
+  });
+
+  test("takes a margin before the window", () => {
+    const options = parseRefineOptions({
+      refine: "m",
+      "margin-before-ms": "300",
+    });
+    expect(options?.marginBefore).toBe(parseMs(300));
+  });
+
+  test("rejects a margin before the window that is not an integer of 0 or more", () => {
+    expect(() =>
+      parseRefineOptions({ refine: "m", "margin-before-ms": "-1" }),
+    ).toThrow("--margin-before-ms");
+  });
+
+  test("rejects a margin before the window without --refine", () => {
+    expect(() => parseRefineOptions({ "margin-before-ms": "300" })).toThrow(
+      "--margin-before-ms needs --refine",
+    );
+  });
+
   test("defaults to no offset", () => {
     expect(parseRefineOptions({ refine: "m" })?.offset).toBe(0);
   });

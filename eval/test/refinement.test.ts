@@ -50,6 +50,20 @@ describe("windowsFromAnchors", () => {
   test("keeps one entry per line", () => {
     expect(windowsFromAnchors([unmatched, anchor, notSung])).toHaveLength(3);
   });
+
+  test("moves the start later by the shift", () => {
+    expect(windowsFromAnchors([anchor], 700)).toEqual([
+      { start: parseMs(1900), end: parseMs(3400) },
+    ]);
+  });
+
+  test("does not move the start past the end", () => {
+    expect(windowsFromAnchors([anchor], 5000)[0]?.start).toBe(parseMs(3400));
+  });
+
+  test("does not move the start before 0", () => {
+    expect(windowsFromAnchors([anchor], -2000)[0]?.start).toBe(parseMs(0));
+  });
 });
 
 describe("refinedConfidence", () => {

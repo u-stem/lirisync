@@ -9,6 +9,12 @@ export type RefineOptions = {
   /** Room the worker adds around each window. */
   margin: Ms;
   /**
+   * Room ahead of stage 1's start; `margin` unless `--margin-before-ms` is
+   * given. Kept apart so that a sound before the line (another vocal track,
+   * a breath) is not taken for its start.
+   */
+  marginBefore: Ms;
+  /**
    * Shift added to every refined start, in ms (negative is earlier). For
    * measuring what a constant correction would give; 0 by default.
    */
@@ -26,6 +32,7 @@ export type RefineFlags = {
   spelling?: string;
   "margin-ms"?: string;
   "offset-ms"?: string;
+  "margin-before-ms"?: string;
 };
 
 /** Plain decimal digits with an optional minus, so "+5", "1e3" and " 5" are refused. */
@@ -48,12 +55,12 @@ function parseSpelling(text: string): "surface" | "kana" {
   );
 }
 
-function parseMargin(text: string): Ms {
+function parseMargin(text: string, flag = "--margin-ms"): Ms {
   const parsed = /^\d+$/.test(text) ? Number(text) : Number.NaN;
   const margin = Ms.safeParse(parsed);
   if (!margin.success) {
     throw new Error(
-      `--margin-ms must be an integer of 0 or more, not ${JSON.stringify(text)}`,
+      `${flag} must be an integer of 0 or more, not ${JSON.stringify(text)}`,
     );
   }
   return margin.data;
@@ -61,25 +68,39 @@ function parseMargin(text: string): Ms {
 
 /**
  * Reads the stage-2 flags. `null` when `--refine` is absent; then `--spelling`,
- * `--margin-ms` and `--offset-ms` are errors, since they would silently do
+ * `--margin-ms`, `--margin-before-ms` and `--offset-ms` are errors, since they would silently do
  * nothing.
  */
 export function parseRefineOptions(flags: RefineFlags): RefineOptions | null {
-  const { refine, spelling, "margin-ms": margin, "offset-ms": offset } = flags;
+  const {
+    refine,
+    spelling,
+    "margin-ms": margin,
+    "offset-ms": offset,
+    "margin-before-ms": marginBefore,
+  } = flags;
   if (refine === undefined) {
     if (spelling !== undefined) throw new Error("--spelling needs --refine");
     if (margin !== undefined) throw new Error("--margin-ms needs --refine");
     if (offset !== undefined) throw new Error("--offset-ms needs --refine");
+    if (marginBefore !== undefined) {
+      throw new Error("--margin-before-ms needs --refine");
+    }
     return null;
   }
   if (refine === "") {
     throw new Error("--refine needs the model directory");
   }
+  const parsedMargin =
+    margin === undefined ? parseMs(DEFAULT_MARGIN_MS) : parseMargin(margin);
   return {
     modelDir: resolve(refine),
     spelling: spelling === undefined ? "surface" : parseSpelling(spelling),
-    margin:
-      margin === undefined ? parseMs(DEFAULT_MARGIN_MS) : parseMargin(margin),
+    margin: parsedMargin,
+    marginBefore:
+      marginBefore === undefined
+        ? parsedMargin
+        : parseMargin(marginBefore, "--margin-before-ms"),
     offset: offset === undefined ? 0 : parseOffset(offset),
   };
 }
