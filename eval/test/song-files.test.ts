@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -26,13 +26,43 @@ describe("checkSongFiles", () => {
     expect(problems).toEqual([]);
   });
 
-  test("compares names without case", () => {
+  test("compares the audio file name without case, as separation does", () => {
     const problems = checkSongFiles([
       "audio/MIX.WAV",
-      "Lyrics.txt",
-      "LABELS.txt",
+      "lyrics.txt",
+      "labels.txt",
     ]);
     expect(problems).toEqual([]);
+  });
+
+  test("asks for the exact case of a text file, which is opened by name", () => {
+    const problems = checkSongFiles([
+      "audio/mix.wav",
+      "Lyrics.txt",
+      "labels.txt",
+    ]);
+    expect(problems).toEqual([
+      {
+        file: "lyrics.txt",
+        blocking: false,
+        hint: "found Lyrics.txt: rename it to lyrics.txt",
+      },
+    ]);
+  });
+
+  test("asks for the exact case of the audio folder", () => {
+    const problems = checkSongFiles([
+      "Audio/mix.wav",
+      "lyrics.txt",
+      "labels.txt",
+    ]);
+    expect(problems).toEqual([
+      {
+        file: "audio/mix.*",
+        blocking: true,
+        hint: "found the folder Audio: rename it to audio",
+      },
+    ]);
   });
 
   test("names the files in audio/ when there is no mix", () => {
@@ -98,7 +128,22 @@ describe("checkSongFiles", () => {
       {
         file: "lyrics.txt",
         blocking: false,
-        hint: "found lyrics/lyrics.txt: move it into the song folder itself",
+        hint: "found lyrics/lyrics.txt: move it into the song folder itself as lyrics.txt",
+      },
+    ]);
+  });
+
+  test("points at a doubled extension in a subfolder", () => {
+    const problems = checkSongFiles([
+      "audio/mix.wav",
+      "lyrics/lyrics.txt.txt",
+      "labels.txt",
+    ]);
+    expect(problems).toEqual([
+      {
+        file: "lyrics.txt",
+        blocking: false,
+        hint: "found lyrics/lyrics.txt.txt: move it into the song folder itself as lyrics.txt",
       },
     ]);
   });
@@ -122,6 +167,10 @@ describe("assertNewSlug", () => {
 
   test("rejects a path", () => {
     expect(() => assertNewSlug("a/b", [])).toThrow("Invalid song name");
+  });
+
+  test("rejects a slug ending with a dot, which Windows drops", () => {
+    expect(() => assertNewSlug("song01.", [])).toThrow("Invalid song name");
   });
 
   test("rejects a slug that exists, without case", () => {
@@ -158,6 +207,18 @@ describe("decodeLyrics", () => {
 });
 
 describe("listSongFiles", () => {
+  test("follows a symbolic link to a file", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "song-files-"));
+    try {
+      await mkdir(join(dir, "audio"));
+      await writeFile(join(dir, "real.wav"), "");
+      await symlink(join(dir, "real.wav"), join(dir, "audio", "mix.wav"));
+      expect(await listSongFiles(dir)).toEqual(["audio/mix.wav", "real.wav"]);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
   test("lists nested files with slashes, sorted", async () => {
     const dir = await mkdtemp(join(tmpdir(), "song-files-"));
     try {

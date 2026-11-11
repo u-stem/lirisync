@@ -1,8 +1,12 @@
-import { readdir } from "node:fs/promises";
-import { extname } from "node:path";
-import { sameName, stemOf, VOCALS_STEM, withStem } from "./audio-files";
-
-export const MIX_STEM = "mix";
+import { readdir, stat } from "node:fs/promises";
+import { extname, join } from "node:path";
+import {
+  MIX_STEM,
+  sameName,
+  stemOf,
+  VOCALS_STEM,
+  withStem,
+} from "./audio-files";
 
 /** A file a song lacks, and what was found that may be meant for it. */
 export type SongFileProblem = {
@@ -22,8 +26,10 @@ function directoryOf(path: string): string {
 }
 
 function audioProblem(files: readonly string[]): SongFileProblem | null {
+  // The folder is opened by its exact name; file stems are compared without
+  // case, as separation and transcription do.
   const audio = files
-    .filter((path) => directoryOf(path).toLowerCase() === "audio")
+    .filter((path) => directoryOf(path) === "audio")
     .map(baseName);
   // Separation is skipped once the vocals exist, so the mix is not needed.
   if (withStem(audio, VOCALS_STEM).length > 0) return null;
@@ -35,6 +41,16 @@ function audioProblem(files: readonly string[]): SongFileProblem | null {
       file,
       blocking: true,
       hint: `more than one: ${[...mixes].sort().join(", ")}; keep one`,
+    };
+  }
+  const misnamed = files
+    .map(directoryOf)
+    .find((dir) => dir !== "audio" && dir.toLowerCase() === "audio");
+  if (misnamed !== undefined) {
+    return {
+      file,
+      blocking: true,
+      hint: `found the folder ${misnamed}: rename it to audio`,
     };
   }
   const others = audio.filter((name) => !stemOf(name).endsWith(".meta"));
@@ -63,12 +79,14 @@ function textProblem(
   files: readonly string[],
   name: string,
 ): SongFileProblem | null {
-  if (files.some((path) => sameName(path, name))) return null;
+  // Opened by its exact name, so a name differing only in case is not found
+  // on a case-sensitive file system.
+  if (files.includes(name)) return null;
   const found = lookalike(files, name);
   let hint: string | null = null;
   if (found !== undefined) {
     hint = found.includes("/")
-      ? `found ${found}: move it into the song folder itself`
+      ? `found ${found}: move it into the song folder itself as ${name}`
       : `found ${found}: rename it to ${name}`;
   }
   return { file: name, blocking: false, hint };
@@ -89,25 +107,29 @@ export function checkSongFiles(files: readonly string[]): SongFileProblem[] {
 /** The files under `dir`, relative and with `/` separators, as `checkSongFiles` takes them. */
 export async function listSongFiles(dir: string): Promise<string[]> {
   const entries = await readdir(dir, { recursive: true, withFileTypes: true });
-  return entries
-    .filter((entry) => entry.isFile())
-    .map((entry) => {
-      const relative = entry.parentPath
-        .slice(dir.length)
-        .replace(/^[\\/]+/, "");
-      const path = relative === "" ? entry.name : `${relative}/${entry.name}`;
-      return path.replaceAll("\\", "/");
-    })
-    .sort();
+  const paths: string[] = [];
+  for (const entry of entries) {
+    // Links are followed, as the separation's file listing does.
+    const target = entry.isSymbolicLink()
+      ? await stat(join(entry.parentPath, entry.name)).catch(() => null)
+      : null;
+    if (!entry.isFile() && target?.isFile() !== true) continue;
+    const relative = entry.parentPath.slice(dir.length).replace(/^[\\/]+/, "");
+    const path = relative === "" ? entry.name : `${relative}/${entry.name}`;
+    paths.push(path.replaceAll("\\", "/"));
+  }
+  return paths.sort();
 }
 
-const SLUG = /^[A-Za-z0-9_-][A-Za-z0-9._-]*$/;
+// Not starting with "." (hidden, and skipped as a song) and not ending with
+// "." (Windows drops it, so "a." would be the folder "a").
+const SLUG = /^[A-Za-z0-9_-](?:[A-Za-z0-9._-]*[A-Za-z0-9_-])?$/;
 
 /** Throws unless `slug` is a usable new song folder name among `existing`. */
 export function assertNewSlug(slug: string, existing: readonly string[]): void {
   if (!SLUG.test(slug)) {
     throw new Error(
-      `Invalid song name ${JSON.stringify(slug)}: use letters, digits, ".", "_" and "-", not starting with "."`,
+      `Invalid song name ${JSON.stringify(slug)}: use letters, digits, ".", "_" and "-", not starting or ending with "."`,
     );
   }
   if (existing.some((name) => sameName(name, slug))) {

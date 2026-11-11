@@ -1,6 +1,7 @@
 import { basename, join, resolve } from "node:path";
 import { parseArgs } from "node:util";
 import { alignWorkerCommand, startWorker } from "./adapters/worker-process";
+import { MIX_STEM } from "./src/audio-files";
 import { assertModelFile, sha256File } from "./src/model-file";
 import {
   assertPlanOptions,
@@ -25,7 +26,7 @@ async function main(): Promise<void> {
         default: join(repoRoot, "eval", "songs"),
       },
       song: { type: "string", multiple: true },
-      input: { type: "string", default: "mix" },
+      input: { type: "string", default: MIX_STEM },
       overwrite: { type: "boolean", default: false },
       "skip-existing": { type: "boolean", default: false },
     },

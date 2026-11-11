@@ -79,12 +79,16 @@ async function main(): Promise<void> {
   }
 
   const songDir = join(songsDir, slug);
-  await mkdir(join(songDir, "audio"), { recursive: true });
+  await mkdir(songsDir, { recursive: true });
+  // Not recursive: it fails when the folder exists, so the cleanup below only
+  // ever removes a folder made here.
+  await mkdir(songDir);
   try {
+    await mkdir(join(songDir, "audio"));
     await copyFile(audio, join(songDir, "audio", mix));
     await writeFile(join(songDir, "lyrics.txt"), lyricsText, { flag: "wx" });
   } catch (error) {
-    // The folder is new (the name was checked above), so nothing else is lost.
+    // The folder was made above, so nothing else is lost.
     await rm(songDir, { recursive: true, force: true });
     throw error;
   }

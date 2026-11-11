@@ -85,7 +85,7 @@ export async function loadSong(
     ]);
     // Notepad may save a byte order mark; it is not part of the first line.
     const lyricsText = rawLyrics.replace(/^\uFEFF/, "");
-    const truth = parseAudacityLabels(labelsText);
+    const truth = parseAudacityLabels(labelsText.replace(/^\uFEFF/, ""));
     if (truth.length === 0) {
       throw new Error("labels.txt has no labels");
     }
