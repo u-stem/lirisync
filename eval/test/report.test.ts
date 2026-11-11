@@ -53,6 +53,17 @@ describe("buildReport", () => {
 });
 
 describe("formatReport", () => {
+  test("shows the bias with its sign", () => {
+    const text = formatReport(buildReport([good]));
+    expect(text).toContain("  Bias (predicted - true, median): +100 ms");
+  });
+
+  test("shows an early bias with a minus sign", () => {
+    const early = result("early", [1000, 2000, 3000], [900, 1950, 2900]);
+    const text = formatReport(buildReport([early]));
+    expect(text).toContain("bias -100 ms");
+  });
+
   test("states a passing verdict", () => {
     const text = formatReport(buildReport([good]));
     expect(text).toContain("Gate: PASS");

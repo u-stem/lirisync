@@ -1,5 +1,5 @@
 import type { SongRun } from "./metrics";
-import { predictionsByLine } from "./metrics";
+import { median, predictionsByLine } from "./metrics";
 
 /** A matched line further off than this is a gross error. */
 export const GROSS_ERROR_MS = 1000;
@@ -15,6 +15,13 @@ export type ErrorProfileOptions = {
 const DEFAULT_OPTIONS: ErrorProfileOptions = { highConfidence: 0.8 };
 
 export type ErrorProfile = {
+  /**
+   * Median of predicted - true line start over matched lines: negative is
+   * early. A bias shared by most lines (the aligner's, or the labels' own,
+   * such as labels placed late while listening) shows here, not in the
+   * absolute errors.
+   */
+  medianSignedErrorMs: number | null;
   /** Nearest-rank 90th percentile of |predicted - true| over matched lines. */
   p90StartErrorMs: number | null;
   /** Share of matched lines off by more than GROSS_ERROR_MS. */
@@ -35,6 +42,8 @@ type MatchedLine = {
   /** 1-based position of the song in `runs`, for error messages. */
   song: number;
   line: number;
+  /** predicted - true; negative is early. */
+  signedMs: number;
   errorMs: number;
   confidence: number | undefined;
 };
@@ -48,10 +57,12 @@ function matchedLines(runs: SongRun[]): MatchedLine[] {
     for (const { line, start } of truth) {
       const prediction = byLine.get(line);
       if (prediction === undefined || prediction.start === null) continue;
+      const signedMs = prediction.start - start;
       matched.push({
         song: index + 1,
         line,
-        errorMs: Math.abs(prediction.start - start),
+        signedMs,
+        errorMs: Math.abs(signedMs),
         confidence: prediction.confidence,
       });
     }
@@ -112,6 +123,7 @@ export function errorProfile(
   );
   const confidenceOf = (line: ScoredLine) => line.confidence;
   return {
+    medianSignedErrorMs: median(lines.map((line) => line.signedMs)),
     p90StartErrorMs: percentile(
       lines.map((line) => line.errorMs),
       0.9,

@@ -30,6 +30,22 @@ function runWithErrors(errors: number[], confidences?: number[]): SongRun {
 }
 
 describe("errorProfile", () => {
+  test("the bias is the median of predicted minus true", () => {
+    const result = errorProfile([runWithErrors([-300, -100, 50])]);
+    expect(result.medianSignedErrorMs).toBe(-100);
+  });
+
+  test("the bias is positive when the predictions are late", () => {
+    const result = errorProfile([runWithErrors([100, 200, 300, 400])]);
+    expect(result.medianSignedErrorMs).toBe(250);
+  });
+
+  test("the bias is null when no line matched", () => {
+    const run = { truth: [truth(1, 1000)], predictions: [predicted(1, null)] };
+    const result = errorProfile([run]);
+    expect(result.medianSignedErrorMs).toBeNull();
+  });
+
   test("P90 is the nearest-rank 90th percentile of the start errors", () => {
     const errors = [10, 20, 30, 40, 50, 60, 70, 80, 90, 100];
     const result = errorProfile([runWithErrors(errors)]);
