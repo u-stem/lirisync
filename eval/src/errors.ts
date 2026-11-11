@@ -12,7 +12,24 @@ export type ErrorProfileOptions = {
   highConfidence: number;
 };
 
-const DEFAULT_OPTIONS: ErrorProfileOptions = { highConfidence: 0.8 };
+/** The confidence at or above which a line counts as one a user would not check. */
+export const DEFAULT_HIGH_CONFIDENCE = 0.8;
+
+const DEFAULT_OPTIONS: ErrorProfileOptions = {
+  highConfidence: DEFAULT_HIGH_CONFIDENCE,
+};
+
+/** How the confidence of the matched lines is spread, to see how it is scaled. */
+export type ConfidenceSpread = {
+  min: number;
+  median: number;
+  max: number;
+  /** Lines at or above `threshold`. */
+  high: number;
+  /** The high-confidence threshold `high` was counted with. */
+  threshold: number;
+  lines: number;
+};
 
 export type ErrorProfile = {
   /**
@@ -36,6 +53,8 @@ export type ErrorProfile = {
    * random gross error (ties count half). 0.5 is no better than chance.
    */
   confidenceAuroc: number | null;
+  /** Null when the aligner reports no confidence or no line matched. */
+  confidenceSpread: ConfidenceSpread | null;
 };
 
 type MatchedLine = {
@@ -122,6 +141,8 @@ export function errorProfile(
     (line) => line.confidence >= options.highConfidence,
   );
   const confidenceOf = (line: ScoredLine) => line.confidence;
+  const confidences = scored?.map(confidenceOf) ?? [];
+  const middle = median(confidences);
   return {
     medianSignedErrorMs: median(lines.map((line) => line.signedMs)),
     p90StartErrorMs: percentile(
@@ -141,5 +162,16 @@ export function errorProfile(
             scored.filter((line) => !isGross(line)).map(confidenceOf),
             scored.filter(isGross).map(confidenceOf),
           ),
+    confidenceSpread:
+      middle === null
+        ? null
+        : {
+            min: Math.min(...confidences),
+            median: middle,
+            max: Math.max(...confidences),
+            high: confident?.length ?? 0,
+            threshold: options.highConfidence,
+            lines: confidences.length,
+          },
   };
 }

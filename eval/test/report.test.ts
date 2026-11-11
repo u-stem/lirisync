@@ -53,6 +53,13 @@ describe("buildReport", () => {
 });
 
 describe("formatReport", () => {
+  test("shows the spread of the confidence", () => {
+    const text = formatReport(buildReport([good]));
+    expect(text).toContain(
+      "  Confidence (min / median / max): 0.900 / 0.900 / 0.900, 3/3 at or above 0.8",
+    );
+  });
+
   test("shows the bias with its sign", () => {
     const text = formatReport(buildReport([good]));
     expect(text).toContain("  Bias (predicted - true, median): +100 ms");
