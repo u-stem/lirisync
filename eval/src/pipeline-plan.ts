@@ -173,8 +173,8 @@ export function cudaLibraryDirs(modelsDir: string): string[] {
 
 /**
  * `env` with `dirs` put first on its PATH. Windows spells the key `Path` and
- * compares it without case, so the existing spelling is kept and other
- * spellings are folded into it: two keys would leave the child's PATH to chance.
+ * compares it without case, so the first spelling is kept and the keys with
+ * other spellings are dropped: two keys would leave the child's PATH to chance.
  */
 export function prependPath(
   env: Readonly<Record<string, string | undefined>>,
