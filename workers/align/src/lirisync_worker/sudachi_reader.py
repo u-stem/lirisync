@@ -6,24 +6,25 @@ from sudachipy import Dictionary, SplitMode
 
 from lirisync_worker.match_text import Token
 
-# A lone 何 is read なん before a sound of the t, d or n rows (何だ, 何で, 何と,
-# 何の, 何なの) and なに otherwise (何を, 何が, 何も, 何か, a line-final 何).
-_NAN_BEFORE = frozenset("タダチヂツヅテデトドナヌネノ")
+# Particles after which a lone 何 is read なに and never なん. Elsewhere both
+# occur: 何で (なにで "with what", なんで "why"), 何と, 何の, and in lyrics 何か
+# (なんか), 何も (なんも), 何にも (なんにも); those keep the dictionary reading.
+_NANI_BEFORE = ("ヲ", "ガ")
 
 
 def read_nani(tokens: Sequence[Token]) -> list[Token]:
-    """Fix the reading of a lone 何, which the core dictionary always reads ナン.
+    """Read a lone 何 as ナニ before を or が; the core dictionary reads it ナン.
 
-    Compounds such as 何度 or 何者 come as one token with their own reading and
-    are left alone. The rule follows standard speech; a singer who says なんか
-    for 何か is not covered.
+    Only the readings that cannot be なん are changed. Where both are possible
+    the text cannot tell which the singer chose, so the dictionary's reading
+    stays. Compounds such as 何度 or 何者 come as one token with their own
+    reading and are left alone.
     """
     fixed: list[Token] = []
     for index, token in enumerate(tokens):
-        if token.surface == "何" and token.reading == "ナン":
-            following = tokens[index + 1].reading if index + 1 < len(tokens) else ""
-            reading = "ナン" if following[:1] in _NAN_BEFORE and following else "ナニ"
-            fixed.append(Token(surface=token.surface, reading=reading))
+        following = tokens[index + 1].reading if index + 1 < len(tokens) else ""
+        if token.surface == "何" and token.reading == "ナン" and following.startswith(_NANI_BEFORE):
+            fixed.append(Token(surface=token.surface, reading="ナニ"))
         else:
             fixed.append(token)
     return fixed
