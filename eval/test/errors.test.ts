@@ -38,8 +38,33 @@ describe("errorProfile", () => {
       median: 0.5,
       max: 0.9,
       high: 1,
+      threshold: 0.8,
       lines: 3,
     });
+  });
+
+  test("takes the mean of the two middle confidences", () => {
+    const run = runWithErrors([0, 0, 0, 0], [0.2, 0.8, 0.5, 0.9]);
+    const result = errorProfile([run], { highConfidence: 0.8 });
+    expect(result.confidenceSpread?.median).toBeCloseTo(0.65);
+  });
+
+  test("counts a confidence at the threshold as high", () => {
+    const run = runWithErrors([0, 0, 0, 0], [0.2, 0.8, 0.5, 0.9]);
+    const result = errorProfile([run], { highConfidence: 0.8 });
+    expect(result.confidenceSpread?.high).toBe(2);
+  });
+
+  test("keeps the threshold it counted with", () => {
+    const run = runWithErrors([0, 0], [0.6, 0.7]);
+    const result = errorProfile([run], { highConfidence: 0.65 });
+    expect(result.confidenceSpread?.threshold).toBe(0.65);
+  });
+
+  test("has no confidence spread when no line matched", () => {
+    const run = { truth: [truth(1, 1000)], predictions: [predicted(1, null)] };
+    const result = errorProfile([run]);
+    expect(result.confidenceSpread).toBeNull();
   });
 
   test("has no confidence spread when the aligner reports none", () => {

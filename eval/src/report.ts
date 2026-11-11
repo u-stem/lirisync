@@ -1,6 +1,5 @@
 import {
   type ConfidenceSpread,
-  DEFAULT_HIGH_CONFIDENCE,
   type ErrorProfile,
   errorProfile,
 } from "./errors";
@@ -85,10 +84,10 @@ function auroc(value: number | null): string {
 
 function spread(value: ConfidenceSpread | null): string {
   if (value === null) return MISSING;
-  const { min, median, max, high, lines } = value;
+  const { min, median, max, high, threshold, lines } = value;
   return (
     `${min.toFixed(3)} / ${median.toFixed(3)} / ${max.toFixed(3)}, ` +
-    `${high}/${lines} at or above ${DEFAULT_HIGH_CONFIDENCE}`
+    `${high}/${lines} at or above ${threshold}`
   );
 }
 

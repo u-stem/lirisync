@@ -24,8 +24,10 @@ export type ConfidenceSpread = {
   min: number;
   median: number;
   max: number;
-  /** Lines at or above the high-confidence threshold. */
+  /** Lines at or above `threshold`. */
   high: number;
+  /** The high-confidence threshold `high` was counted with. */
+  threshold: number;
   lines: number;
 };
 
@@ -168,6 +170,7 @@ export function errorProfile(
             median: middle,
             max: Math.max(...confidences),
             high: confident?.length ?? 0,
+            threshold: options.highConfidence,
             lines: confidences.length,
           },
   };
