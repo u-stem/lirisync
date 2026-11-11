@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { closeSync, writeSync } from "node:fs";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -78,11 +79,41 @@ describe("openRunLog", () => {
     const log = openRunLog(
       join(dir, "a.log"),
       (message) => warnings.push(message),
-      failing,
+      { write: failing, close: closeSync },
     );
     log.write("a\n");
     log.write("b\n");
     log.close();
     expect(warnings).toHaveLength(1);
+  });
+
+  test("reports no path after a write fails", () => {
+    const failing = () => {
+      throw new Error("disk full");
+    };
+    const log = openRunLog(join(dir, "a.log"), () => {}, {
+      write: failing,
+      close: closeSync,
+    });
+    log.write("a\n");
+    log.close();
+    expect(log.path).toBeNull();
+  });
+
+  test("warns instead of throwing when it cannot close the file", () => {
+    const warnings: string[] = [];
+    const log = openRunLog(
+      join(dir, "a.log"),
+      (message) => warnings.push(message),
+      {
+        write: (fd, chunk) => writeSync(fd, String(chunk)),
+        close: (fd) => {
+          closeSync(fd);
+          throw new Error("close failed");
+        },
+      },
+    );
+    log.close();
+    expect(warnings).toEqual([expect.stringContaining("cannot close the log")]);
   });
 });

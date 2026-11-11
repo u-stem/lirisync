@@ -2,10 +2,16 @@ import { closeSync, mkdirSync, openSync, writeSync } from "node:fs";
 import { dirname } from "node:path";
 
 export type RunLog = {
-  /** The file written, or null when it could not be opened. */
-  path: string | null;
+  /** The file written, or null when it could not be opened or a write failed. */
+  readonly path: string | null;
   write(chunk: string | Uint8Array): void;
   close(): void;
+};
+
+/** The file operations, replaceable in tests. */
+export type RunLogIo = {
+  write(fd: number, chunk: string | Uint8Array): void;
+  close(fd: number): void;
 };
 
 function writeChunk(fd: number, chunk: string | Uint8Array): void {
@@ -26,7 +32,7 @@ function reasonOf(error: unknown): string {
 export function openRunLog(
   path: string,
   warn: (message: string) => void,
-  write: (fd: number, chunk: string | Uint8Array) => void = writeChunk,
+  io: RunLogIo = { write: writeChunk, close: closeSync },
 ): RunLog {
   let fd: number | null;
   try {
@@ -38,11 +44,14 @@ export function openRunLog(
   }
   let failed = false;
   return {
-    path,
+    // A log that stopped part way would mislead whoever reads it as the run.
+    get path() {
+      return failed ? null : path;
+    },
     write(chunk) {
       if (fd === null || failed) return;
       try {
-        write(fd, chunk);
+        io.write(fd, chunk);
       } catch (error) {
         warn(`stopped writing the log ${path}: ${reasonOf(error)}`);
         failed = true;
@@ -52,7 +61,11 @@ export function openRunLog(
       if (fd === null) return;
       const open = fd;
       fd = null;
-      closeSync(open);
+      try {
+        io.close(open);
+      } catch (error) {
+        warn(`cannot close the log ${path}: ${reasonOf(error)}`);
+      }
     },
   };
 }
