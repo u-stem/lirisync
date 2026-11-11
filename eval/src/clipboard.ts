@@ -34,6 +34,11 @@ export function clipboardCommand(
   return null;
 }
 
+/** Whether `clipboardCommand` has a command for `platform`. */
+export function hasClipboardCommand(platform: NodeJS.Platform): boolean {
+  return clipboardCommand(platform, "") !== null;
+}
+
 /** Puts the UTF-8 text file at `path` on the clipboard. Throws when it cannot. */
 export async function copyFileToClipboard(
   path: string,

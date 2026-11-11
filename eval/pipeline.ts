@@ -2,7 +2,7 @@ import { existsSync } from "node:fs";
 import { mkdir } from "node:fs/promises";
 import { delimiter, join, resolve } from "node:path";
 import { parseArgs } from "node:util";
-import { copyFileToClipboard } from "./src/clipboard";
+import { copyFileToClipboard, hasClipboardCommand } from "./src/clipboard";
 import { assertModelFile } from "./src/model-file";
 import {
   alignerModelDir,
@@ -153,6 +153,7 @@ async function main(): Promise<void> {
   copyLog = shouldCopyLog({
     noCopyLog: values["no-copy-log"],
     interactive: process.stderr.isTTY === true,
+    supported: hasClipboardCommand(process.platform),
   });
   const options = parsePipelineOptions(values, process.platform, repoRoot);
   const labelsReady = await assertReady(options);
@@ -185,7 +186,12 @@ main()
     runLog.close();
     if (path === null) return;
     if (!copyLog) {
-      process.stderr.write("Copy it to the clipboard with: bun run eval:log\n");
+      // eval:log would fail the same way where there is no clipboard command.
+      if (hasClipboardCommand(process.platform)) {
+        process.stderr.write(
+          "Copy it to the clipboard with: bun run eval:log\n",
+        );
+      }
       return;
     }
     try {

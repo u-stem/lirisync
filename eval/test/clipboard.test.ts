@@ -1,5 +1,15 @@
 import { describe, expect, test } from "bun:test";
-import { clipboardCommand } from "../src/clipboard";
+import { clipboardCommand, hasClipboardCommand } from "../src/clipboard";
+
+describe("hasClipboardCommand", () => {
+  test("is true on win32", () => {
+    expect(hasClipboardCommand("win32")).toBe(true);
+  });
+
+  test("is false on linux", () => {
+    expect(hasClipboardCommand("linux")).toBe(false);
+  });
+});
 
 describe("clipboardCommand", () => {
   test("reads the file in PowerShell on win32", () => {
