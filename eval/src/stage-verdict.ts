@@ -45,17 +45,19 @@ function noWorse(
  * without torch are checked by hand, not here.
  *
  * A silent error rate is unmeasured when no line reaches the high-confidence
- * threshold, and the perturbation criterion without a perturbation run.
+ * threshold, and the perturbation criterion when no perturbation was made.
+ * Values are compared unrounded.
  */
 export function stageTwoVerdict(
   stageOne: ErrorProfile,
   stageTwo: ErrorProfile,
   stageTwoPerturbation: PerturbationReport | null,
 ): StageTwoVerdict {
+  const kinds = stageTwoPerturbation?.kinds ?? [];
+  const made = kinds.reduce((sum, kind) => sum + kind.perturbations, 0);
+  // No perturbation run, or one that made none, measured nothing.
   const overOne =
-    stageTwoPerturbation === null
-      ? null
-      : stageTwoPerturbation.kinds.reduce((sum, kind) => sum + kind.overOne, 0);
+    made === 0 ? null : kinds.reduce((sum, kind) => sum + kind.overOne, 0);
   const criteria: Criterion[] = [
     noWorse(
       "P90 start error",

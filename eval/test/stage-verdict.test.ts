@@ -70,6 +70,12 @@ describe("stageTwoVerdict", () => {
     expect(verdict.outcome).toBe("undecided");
   });
 
+  test("leaves it undecided when the run made no perturbation", () => {
+    const empty: PerturbationReport = { kinds: [], songs: [] };
+    const verdict = stageTwoVerdict(STAGE_ONE, profile(), empty);
+    expect(verdict.outcome).toBe("undecided");
+  });
+
   test("leaves it undecided without a perturbation run", () => {
     const verdict = stageTwoVerdict(STAGE_ONE, profile(), null);
     expect(verdict.outcome).toBe("undecided");
@@ -93,6 +99,25 @@ describe("stageTwoVerdict", () => {
 });
 
 describe("formatStageTwoVerdict", () => {
+  test("shows a rejection without a reason in brackets", () => {
+    const stageTwo = profile({ p90StartErrorMs: 415 });
+    const text = formatStageTwoVerdict(
+      stageTwoVerdict(STAGE_ONE, stageTwo, perturbation(0)),
+    );
+    expect(text.split("\n").at(-2)).toBe("  Verdict: REJECT");
+  });
+
+  test("names every unmeasured criterion", () => {
+    const stageTwo = profile({ silentErrorRate: null });
+    const text = formatStageTwoVerdict(
+      stageTwoVerdict(STAGE_ONE, stageTwo, null),
+    );
+    expect(text.split("\n").slice(-3, -1)).toEqual([
+      "  Perturbations hitting more than one other line: —, unmeasured",
+      "  Verdict: UNDECIDED (unmeasured: silent error rate, perturbations hitting more than one other line)",
+    ]);
+  });
+
   test("shows each criterion and the outcome", () => {
     const stageTwo = profile({ p90StartErrorMs: 288, silentErrorRate: null });
     const text = formatStageTwoVerdict(

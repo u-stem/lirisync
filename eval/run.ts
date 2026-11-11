@@ -367,7 +367,6 @@ async function main(): Promise<void> {
         perturbation?.refine ?? null,
       );
       refineJson = {
-        verdict,
         spelling: refineOptions.spelling,
         marginMs: refineOptions.margin,
         report: refineReport,
@@ -375,6 +374,7 @@ async function main(): Promise<void> {
           overall: addStatusCounts(songCounts.map(({ counts }) => counts)),
           songs: songCounts.map(({ slug, counts }) => ({ slug, ...counts })),
         },
+        verdict,
         ...(perturbation?.refine == null
           ? {}
           : { perturbation: perturbation.refine }),
