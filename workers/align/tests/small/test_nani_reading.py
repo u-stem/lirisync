@@ -22,6 +22,16 @@ def test_keeps_the_dictionary_reading_where_both_occur(following: str) -> None:
     assert _readings(tokens)[0] == "ナン"
 
 
+@pytest.mark.parametrize("space", [" ", "\u3000"])
+def test_looks_past_a_space_for_the_particle(space: str) -> None:
+    tokens = [Token("何", "ナン"), Token(space, "キゴウ"), Token("を", "ヲ")]
+    assert _readings(tokens)[0] == "ナニ"
+
+
+def test_keeps_a_reading_the_dictionary_already_gives_as_nani() -> None:
+    assert _readings([Token("何", "ナニ"), Token("を", "ヲ")]) == ["ナニ", "ヲ"]
+
+
 def test_keeps_the_dictionary_reading_at_the_end() -> None:
     assert _readings([Token("それ", "ソレ"), Token("何", "ナン")]) == ["ソレ", "ナン"]
 

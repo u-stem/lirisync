@@ -22,7 +22,8 @@ def read_nani(tokens: Sequence[Token]) -> list[Token]:
     """
     fixed: list[Token] = []
     for index, token in enumerate(tokens):
-        following = tokens[index + 1].reading if index + 1 < len(tokens) else ""
+        # A space is a token of its own (read キゴウ); look past it.
+        following = next((t.reading for t in tokens[index + 1 :] if t.surface.strip()), "")
         if token.surface == "何" and token.reading == "ナン" and following.startswith(_NANI_BEFORE):
             fixed.append(Token(surface=token.surface, reading="ナニ"))
         else:
