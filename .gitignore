@@ -22,6 +22,9 @@ eval/songs/*/audio/
 eval/songs/*/lyrics.txt
 eval/songs/*/asr/
 
+# Logs of eval:all (local paths; shared by hand when asked)
+eval/logs/
+
 # OS / editor
 .DS_Store
 Thumbs.db
