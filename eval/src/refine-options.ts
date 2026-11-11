@@ -60,8 +60,9 @@ function parseMargin(text: string): Ms {
 }
 
 /**
- * Reads the stage-2 flags. `null` when `--refine` is absent; then `--spelling`
- * and `--margin-ms` are errors, since they would silently do nothing.
+ * Reads the stage-2 flags. `null` when `--refine` is absent; then `--spelling`,
+ * `--margin-ms` and `--offset-ms` are errors, since they would silently do
+ * nothing.
  */
 export function parseRefineOptions(flags: RefineFlags): RefineOptions | null {
   const { refine, spelling, "margin-ms": margin, "offset-ms": offset } = flags;
