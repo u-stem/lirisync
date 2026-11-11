@@ -255,6 +255,11 @@ describe("stepEnv", () => {
     expect(env.PYTHONUTF8).toBe("1");
   });
 
+  test("keeps Python output unbuffered", () => {
+    const env = stepEnv({});
+    expect(env.PYTHONUNBUFFERED).toBe("1");
+  });
+
   test("silences the symlink warning", () => {
     const env = stepEnv({});
     expect(env.HF_HUB_DISABLE_SYMLINKS_WARNING).toBe("1");
@@ -275,6 +280,17 @@ describe("logHeader", () => {
     );
     expect(header).toBe(
       "# bun run eval:all --song a\n# started 2026-11-11T01:02:03.000Z on win32\n",
+    );
+  });
+
+  test("quotes an argument with a space", () => {
+    const header = logHeader(
+      ["--songs-dir", "C:\\My Songs"],
+      "win32",
+      new Date("2026-11-11T01:02:03.000Z"),
+    );
+    expect(header.split("\n")[0]).toBe(
+      '# bun run eval:all --songs-dir "C:\\My Songs"',
     );
   });
 });

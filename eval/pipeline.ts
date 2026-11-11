@@ -1,6 +1,5 @@
-import { closeSync, mkdirSync, openSync, writeSync } from "node:fs";
 import { mkdir } from "node:fs/promises";
-import { dirname, resolve } from "node:path";
+import { resolve } from "node:path";
 import { parseArgs } from "node:util";
 import { assertModelFile } from "./src/model-file";
 import {
@@ -16,18 +15,19 @@ import {
   stepEnv,
 } from "./src/pipeline-plan";
 import { assertAlignerModelDir } from "./src/refine-options";
+import { openRunLog } from "./src/run-log";
 import { listSongs, selectSongs } from "./src/song-set";
 import { teeStream } from "./src/tee";
 
 const repoRoot = resolve(import.meta.dir, "..");
-const logPath = pipelineLogPath(repoRoot);
 
 /** Everything shown is also written here, so the run can be shared whole. */
-mkdirSync(dirname(logPath), { recursive: true });
-const logFd = openSync(logPath, "w");
+const runLog = openRunLog(pipelineLogPath(repoRoot), (message) =>
+  process.stderr.write(`warning: ${message}\n`),
+);
 
 function toLog(chunk: string | Uint8Array): void {
-  writeSync(logFd, chunk);
+  runLog.write(chunk);
 }
 
 function log(text: string): void {
@@ -70,11 +70,15 @@ async function runStep(
     stdout: "pipe",
     stderr: "pipe",
   });
-  const [, , exitCode] = await Promise.all([
+  const relayed = Promise.all([
     teeStream(child.stdout, [(chunk) => process.stdout.write(chunk), toLog]),
     teeStream(child.stderr, [(chunk) => process.stderr.write(chunk), toLog]),
-    child.exited,
-  ]);
+  ]).catch((error: unknown) => {
+    // Nothing reads the step's output any more; do not leave it running.
+    child.kill();
+    throw error;
+  });
+  const [, exitCode] = await Promise.all([relayed, child.exited]);
   if (exitCode !== 0) {
     throw new Error(
       `${step.name} failed (exit code ${exitCode}). Run the same command again to continue: finished songs are skipped in separate and transcribe`,
@@ -118,6 +122,10 @@ main()
     process.exitCode = 1;
   })
   .finally(() => {
-    log(`Log: ${logPath}\nCopy it to the clipboard with: bun run eval:log\n`);
-    closeSync(logFd);
+    if (runLog.path !== null) {
+      log(
+        `Log: ${runLog.path}\nCopy it to the clipboard with: bun run eval:log\n`,
+      );
+    }
+    runLog.close();
   });

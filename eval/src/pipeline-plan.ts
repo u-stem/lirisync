@@ -105,6 +105,9 @@ const STEP_ENV_DEFAULTS = {
   // Piped Python output would otherwise use the Windows code page, which the
   // log, read as UTF-8, would garble.
   PYTHONUTF8: "1",
+  // Piped stdout is block-buffered otherwise, so output would show up late
+  // and be lost from the log when a step is killed.
+  PYTHONUNBUFFERED: "1",
   // Windows without developer mode cannot make the cache's symlinks; the
   // cache still works, and the warning only buries the real output.
   HF_HUB_DISABLE_SYMLINKS_WARNING: "1",
@@ -123,7 +126,12 @@ export function logHeader(
   platform: NodeJS.Platform,
   startedAt: Date,
 ): string {
-  const command = ["bun run eval:all", ...args].join(" ");
+  // Quoted the way a shell would take it back, so a pasted log shows where
+  // an argument with a space ends.
+  const shown = args.map((arg) =>
+    /\s/.test(arg) ? `"${arg.replaceAll('"', '\\"')}"` : arg,
+  );
+  const command = ["bun run eval:all", ...shown].join(" ");
   return `# ${command}\n# started ${startedAt.toISOString()} on ${platform}\n`;
 }
 
