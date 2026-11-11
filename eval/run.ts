@@ -25,6 +25,7 @@ import {
 } from "./src/refine-options";
 import {
   addStatusCounts,
+  clampedWindowCount,
   countStatuses,
   formatStatusCounts,
   type StatusCounts,
@@ -320,6 +321,16 @@ async function main(): Promise<void> {
           const seconds = (performance.now() - started) / 1000;
           process.stderr.write(
             `[${index + 1}/${songs.length}] ${song.slug}: refined in ${seconds.toFixed(1)} s\n`,
+          );
+        }
+        const shift = refineOptions.margin - refineOptions.marginBefore;
+        const clamped = anchoredBySong.reduce(
+          (sum, lines) => sum + clampedWindowCount(lines, shift),
+          0,
+        );
+        if (clamped > 0) {
+          process.stderr.write(
+            `note: ${clamped} lines have a window shorter than ${shift} ms; they keep more than ${refineOptions.marginBefore} ms of margin before stage 1's start\n`,
           );
         }
       } catch (error) {

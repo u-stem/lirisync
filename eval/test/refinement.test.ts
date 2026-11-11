@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { type AnchoredLine, parseMs, type RefinedLine } from "@lirisync/core";
 import {
   addStatusCounts,
+  clampedWindowCount,
   countStatuses,
   formatStatusCounts,
   refinedConfidence,
@@ -63,6 +64,17 @@ describe("windowsFromAnchors", () => {
 
   test("does not move the start before 0", () => {
     expect(windowsFromAnchors([anchor], -2000)[0]?.start).toBe(parseMs(0));
+  });
+});
+
+describe("clampedWindowCount", () => {
+  test("counts the windows shorter than the shift", () => {
+    // anchor's window is 2200 ms long.
+    expect(clampedWindowCount([anchor, unmatched, anchor], 2500)).toBe(2);
+  });
+
+  test("does not count a window as long as the shift", () => {
+    expect(clampedWindowCount([anchor], 2200)).toBe(0);
   });
 });
 

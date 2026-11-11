@@ -25,6 +25,20 @@ export function windowsFromAnchors(
 }
 
 /**
+ * How many anchored lines have a window shorter than `startShiftMs`: their
+ * start stops at the end, so the worker leaves more margin ahead of stage 1's
+ * start than was asked for.
+ */
+export function clampedWindowCount(
+  lines: readonly AnchoredLine[],
+  startShiftMs: number,
+): number {
+  return lines.filter(
+    (line) => line.status === "anchor" && line.start + startShiftMs > line.end,
+  ).length;
+}
+
+/**
  * Confidence of a refined line: the exponential of the per-frame log
  * likelihood ratio, so 1 is a path as good as the best one and values near 0
  * are poorly supported by the audio. This is provisional; it has not been
