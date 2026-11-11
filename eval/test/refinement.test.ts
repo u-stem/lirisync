@@ -67,6 +67,21 @@ describe("refinedConfidence", () => {
 });
 
 describe("toRefinedPredictions", () => {
+  test("shifts a refined line's start by the offset", () => {
+    const result = toRefinedPredictions([anchor], [refined], -100);
+    expect(result[0]?.start).toBe(parseMs(1200));
+  });
+
+  test("does not shift a start before 0", () => {
+    const result = toRefinedPredictions([anchor], [refined], -5000);
+    expect(result[0]?.start).toBe(parseMs(0));
+  });
+
+  test("does not shift a line that fell back to stage 1", () => {
+    const result = toRefinedPredictions([anchor], [tooShort], -100);
+    expect(result[0]?.start).toBe(parseMs(1200));
+  });
+
   test("numbers lines from 1", () => {
     const result = toRefinedPredictions([anchor], [refined]);
     expect(result[0]?.line).toBe(1);

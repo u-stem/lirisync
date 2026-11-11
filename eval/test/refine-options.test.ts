@@ -17,6 +17,35 @@ describe("parseRefineOptions", () => {
     expect(parseRefineOptions({ refine: "m" })?.spelling).toBe("surface");
   });
 
+  test("defaults to no offset", () => {
+    expect(parseRefineOptions({ refine: "m" })?.offset).toBe(0);
+  });
+
+  test("takes a negative offset", () => {
+    const options = parseRefineOptions({ refine: "m", "offset-ms": "-110" });
+    expect(options?.offset).toBe(-110);
+  });
+
+  test("takes a positive offset", () => {
+    const options = parseRefineOptions({ refine: "m", "offset-ms": "40" });
+    expect(options?.offset).toBe(40);
+  });
+
+  test.each(["1.5", "abc", "", "--5", "+5", " 5"])(
+    "rejects the offset %p",
+    (text) => {
+      expect(() =>
+        parseRefineOptions({ refine: "m", "offset-ms": text }),
+      ).toThrow("--offset-ms");
+    },
+  );
+
+  test("rejects an offset without --refine", () => {
+    expect(() => parseRefineOptions({ "offset-ms": "-100" })).toThrow(
+      "--offset-ms needs --refine",
+    );
+  });
+
   test("defaults to a margin of 1000 ms", () => {
     expect(parseRefineOptions({ refine: "m" })?.margin).toBe(parseMs(1000));
   });

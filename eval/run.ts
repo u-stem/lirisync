@@ -6,6 +6,7 @@ import { WorkerAnchorer } from "./adapters/worker-anchorer";
 import { alignWorkerCommand, startWorker } from "./adapters/worker-process";
 import { WorkerRefiner } from "./adapters/worker-refiner";
 import { findVocals } from "./src/audio-files";
+import { lineRows } from "./src/line-rows";
 import { MemoRefiner } from "./src/memo-refiner";
 import {
   buildPerturbationReport,
@@ -113,6 +114,7 @@ async function runPerturbations(
               ignored: [],
               margin: refine.options.margin,
             },
+            offsetMs: refine.options.offset,
           },
     );
     const started = performance.now();
@@ -148,6 +150,8 @@ async function runPerturbations(
 type RefineJson = {
   spelling: RefineOptions["spelling"];
   marginMs: number;
+  /** Shift added to every refined start; 0 unless `--offset-ms` is given. */
+  offsetMs: number;
   report: Report;
   statuses: {
     overall: StatusCounts;
@@ -191,7 +195,7 @@ async function refineSong(
     slug: song.slug,
     result: {
       ...baseline,
-      predictions: toRefinedPredictions(anchored, lines),
+      predictions: toRefinedPredictions(anchored, lines, options.offset),
     },
     lines,
   };
@@ -211,6 +215,7 @@ async function main(): Promise<void> {
       refine: { type: "string" },
       spelling: { type: "string" },
       "margin-ms": { type: "string" },
+      "offset-ms": { type: "string" },
     },
     strict: true,
   });
@@ -358,7 +363,7 @@ async function main(): Promise<void> {
         counts: countStatuses(lines),
       }));
       process.stdout.write(
-        `\nStage 2: refine (spelling ${refineOptions.spelling}, margin ${refineOptions.margin} ms)\n\n${formatReport(refineReport)}`,
+        `\nStage 2: refine (spelling ${refineOptions.spelling}, margin ${refineOptions.margin} ms${refineOptions.offset === 0 ? "" : `, offset ${refineOptions.offset} ms`})\n\n${formatReport(refineReport)}`,
       );
       process.stdout.write(`\n${formatStatusCounts(songCounts)}`);
       const verdict = stageTwoVerdict(
@@ -369,6 +374,7 @@ async function main(): Promise<void> {
       refineJson = {
         spelling: refineOptions.spelling,
         marginMs: refineOptions.margin,
+        offsetMs: refineOptions.offset,
         report: refineReport,
         statuses: {
           overall: addStatusCounts(songCounts.map(({ counts }) => counts)),
@@ -403,6 +409,12 @@ async function main(): Promise<void> {
       asr,
       worker: worker.hello.worker,
       report,
+      lines: lineRows(
+        results,
+        refineJson === undefined
+          ? null
+          : refinements.map(({ result }) => result),
+      ),
       ...(refineJson === undefined ? {} : { refine: refineJson }),
       ...(perturbation === undefined
         ? {}
