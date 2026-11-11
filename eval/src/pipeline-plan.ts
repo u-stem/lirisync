@@ -288,3 +288,15 @@ export function pipelineSteps(options: PipelineOptions): PipelineStep[] {
     },
   ];
 }
+
+/**
+ * Whether `eval:all` puts its log on the clipboard when it ends: in a terminal,
+ * where the next thing is to paste it, unless `--no-copy-log` is given. A run
+ * from a script or CI leaves the clipboard alone.
+ */
+export function shouldCopyLog(options: {
+  noCopyLog: boolean;
+  interactive: boolean;
+}): boolean {
+  return options.interactive && !options.noCopyLog;
+}
