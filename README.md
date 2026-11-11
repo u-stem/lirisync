@@ -46,9 +46,10 @@ powershell -ExecutionPolicy Bypass -File scripts\setup-windows.ps1
 
 | オプション | 既定値 | 内容 |
 | --- | --- | --- |
-| `-ModelsDir` | `C:\lirisync-models` | モデルの置き場所。分離モデルは `<ModelsDir>\separator`、文字 CTC モデルは `<ModelsDir>\aligner` に置きます |
+| `-ModelsDir` | `C:\lirisync-models` | モデルの置き場所。分離モデルは `<ModelsDir>\separator`、文字 CTC モデルは `<ModelsDir>\aligner`、CUDA のライブラリは `<ModelsDir>\cuda` に置きます |
 | `-SkipTools` | なし | winget を使いません。ツールは先に `PATH` に入れておいてください |
-| `-SkipModels` | なし | モデルを取得しません |
+| `-SkipModels` | なし | モデルも CUDA のライブラリも取得しません |
+| `-SkipCuda` | なし | CUDA のライブラリ（約 1.4 GB）を取得しません。書き起こしは CPU で走ります |
 
 スクリプトは、`PATH` に無いものだけを winget で入れます（git は手順 1 で入れるので対象外です）。
 
@@ -58,9 +59,11 @@ powershell -ExecutionPolicy Bypass -File scripts\setup-windows.ps1
 | `bun` | `Oven-sh.Bun` |
 | `ffmpeg` | `Gyan.FFmpeg` |
 
-そのあと `bun install --frozen-lockfile` と、2 か所の `uv sync --locked` を動かし、2 つのモデルを取得します。入れた直後のツールを同じ実行で使えるよう、`PATH` はレジストリから読み直します。それでも見つからないときは、PowerShell を開き直して再実行してください。
+そのあと `bun install --frozen-lockfile` と、2 か所の `uv sync --locked` を動かし、2 つのモデルを取得します。NVIDIA の GPU があれば、書き起こしを GPU で動かすための CUDA のライブラリも取得します。入れた直後のツールを同じ実行で使えるよう、`PATH` はレジストリから読み直します。それでも見つからないときは、PowerShell を開き直して再実行してください。
 
-ffmpeg（Gyan のビルド）は開発用で、配布物には入りません。CUDA のドライバとライブラリは入れません。書き起こしを GPU で動かすときは、[eval/README.md](eval/README.md) の該当の節を見てください。
+ffmpeg（Gyan のビルド）は開発用で、配布物には入りません。
+
+CUDA のライブラリ（cuBLAS、cuDNN、NVRTC）は、`eval/transcribe/cuda-requirements.txt` で版とハッシュを固定した NVIDIA の wheel を、`uv pip install --target` で `<ModelsDir>\cuda` に入れます。NVIDIA のライセンスなので、`uv.lock` にもリポジトリにも入れません。評価専用で、配布物にも入りません。NVIDIA のドライバは入れないので、先に入れておいてください。NVIDIA の GPU が見つからないときは、この手順を飛ばします。
 
 ### 手で行う場合
 

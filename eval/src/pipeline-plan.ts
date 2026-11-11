@@ -14,7 +14,16 @@ export type PipelineFlags = {
   "out-dir"?: string;
   "songs-dir"?: string;
   song?: string[];
+  device?: string;
 };
+
+/** The devices `lirisync-transcribe --device` takes. */
+const DEVICES = ["auto", "cpu", "cuda"] as const;
+export type Device = (typeof DEVICES)[number];
+
+function isDevice(value: string): value is Device {
+  return DEVICES.some((device) => device === value);
+}
 
 export type PipelineOptions = {
   /** Directory holding `separator/` and `aligner/`. */
@@ -27,6 +36,8 @@ export type PipelineOptions = {
   songsDir: string;
   /** Slugs to process; undefined means every song. */
   songs: string[] | undefined;
+  /** Device for transcription; undefined leaves the transcriber's default. */
+  device: Device | undefined;
   repoRoot: string;
 };
 
@@ -34,6 +45,8 @@ export type PipelineStep = {
   name: string;
   command: string;
   args: string[];
+  /** Directories to put first on PATH, used only when they exist. */
+  pathPrepend: string[];
 };
 
 /** `value`, unless it is empty: `resolve("")` would quietly be the current directory. */
@@ -65,6 +78,16 @@ function modelsDirOf(
   throw new Error("--models-dir is required outside Windows");
 }
 
+function deviceOf(flag: string | undefined): Device | undefined {
+  if (flag === undefined) return undefined;
+  if (!isDevice(flag)) {
+    throw new Error(
+      `--device must be ${DEVICES.slice(0, -1).join(", ")} or ${DEVICES.at(-1)}`,
+    );
+  }
+  return flag;
+}
+
 /** Checks the flags and fills the defaults. Paths come out absolute. */
 export function parsePipelineOptions(
   flags: PipelineFlags,
@@ -91,6 +114,7 @@ export function parsePipelineOptions(
       join(repoRoot, "eval", "songs"),
     ),
     songs: flags.song,
+    device: deviceOf(flags.device),
     repoRoot,
   };
 }
@@ -133,6 +157,40 @@ export function logHeader(
   );
   const command = ["bun run eval:all", ...shown].join(" ");
   return `# ${command}\n# started ${startedAt.toISOString()} on ${platform}\n`;
+}
+
+/**
+ * The DLL directories of the NVIDIA wheels that `scripts/setup-windows.ps1`
+ * installs under `<models>/cuda`. ctranslate2 loads cuBLAS and cuDNN by name,
+ * so they must be on PATH for `--device cuda`.
+ */
+export function cudaLibraryDirs(modelsDir: string): string[] {
+  const nvidia = join(modelsDir, "cuda", "nvidia");
+  return ["cublas", "cudnn", "cuda_nvrtc"].map((name) =>
+    join(nvidia, name, "bin"),
+  );
+}
+
+/**
+ * `env` with `dirs` put first on its PATH. Windows spells the key `Path` and
+ * compares it without case, so the first spelling is kept and the keys with
+ * other spellings are dropped: two keys would leave the child's PATH to chance.
+ */
+export function prependPath(
+  env: Readonly<Record<string, string | undefined>>,
+  dirs: readonly string[],
+  delimiter: string,
+): Record<string, string | undefined> {
+  if (dirs.length === 0) return { ...env };
+  const keys = Object.keys(env).filter((key) => key.toUpperCase() === "PATH");
+  const [key = "PATH"] = keys;
+  const rest = Object.fromEntries(
+    Object.entries(env).filter(([name]) => !keys.includes(name)),
+  );
+  const current = env[key];
+  const entries =
+    current === undefined || current === "" ? dirs : [...dirs, current];
+  return { ...rest, [key]: entries.join(delimiter) };
 }
 
 /** Where the separation model sits under the models directory. */
@@ -188,6 +246,7 @@ export function pipelineSteps(options: PipelineOptions): PipelineStep[] {
         "--skip-existing",
         ...songFlags,
       ],
+      pathPrepend: [],
     },
     {
       name: "transcribe",
@@ -205,13 +264,21 @@ export function pipelineSteps(options: PipelineOptions): PipelineStep[] {
         options.songsDir,
         "--skip-existing",
         ...songFlags,
+        ...(options.device === undefined ? [] : ["--device", options.device]),
       ],
+      pathPrepend: cudaLibraryDirs(options.modelsDir),
     },
     {
       name: "eval surface",
       command: "bun",
       args: evalArgs("surface", surfaceOut),
+      pathPrepend: [],
     },
-    { name: "eval kana", command: "bun", args: evalArgs("kana", kanaOut) },
+    {
+      name: "eval kana",
+      command: "bun",
+      args: evalArgs("kana", kanaOut),
+      pathPrepend: [],
+    },
   ];
 }

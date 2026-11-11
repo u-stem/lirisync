@@ -5,19 +5,25 @@ Sets up a Windows development machine for Lirisync in one run.
 .DESCRIPTION
 Installs missing tools with winget (uv, bun, ffmpeg), installs the locked
 dependencies, and downloads the models used by the manual tests and the
-evaluation tools. Safe to run again: installed tools are skipped and the model
-fetch tools skip files whose SHA-256 already matches. No administrator rights
-are needed.
+evaluation tools. On a machine with an NVIDIA GPU it also installs the CUDA
+libraries that GPU transcription needs. Safe to run again: installed tools are
+skipped, the model fetch tools skip files whose SHA-256 already matches, and uv
+skips CUDA libraries already installed. No administrator rights are needed.
 
 .PARAMETER ModelsDir
-Where to put the models. The separation model goes to <ModelsDir>\separator and
-the character CTC model goes to <ModelsDir>\aligner.
+Where to put the models. The separation model goes to <ModelsDir>\separator, the
+character CTC model goes to <ModelsDir>\aligner and the CUDA libraries go to
+<ModelsDir>\cuda.
 
 .PARAMETER SkipTools
 Do not use winget. The tools must already be on PATH.
 
 .PARAMETER SkipModels
-Do not download the models.
+Do not download the models or the CUDA libraries.
+
+.PARAMETER SkipCuda
+Do not download the CUDA libraries (about 1.4 GB). Without them, transcription
+runs on the CPU. They are skipped anyway when no NVIDIA GPU is found.
 
 .EXAMPLE
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts\setup-windows.ps1
@@ -26,7 +32,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts\setup-windows.ps1
 param(
     [string]$ModelsDir = 'C:\lirisync-models',
     [switch]$SkipTools,
-    [switch]$SkipModels
+    [switch]$SkipModels,
+    [switch]$SkipCuda
 )
 
 Set-StrictMode -Version Latest
@@ -137,6 +144,11 @@ function Install-MissingTools {
     }
 }
 
+function Test-NvidiaGpu {
+    $controllers = @(Get-CimInstance -ClassName Win32_VideoController -ErrorAction SilentlyContinue)
+    return [bool]($controllers | Where-Object { $_.Name -like '*NVIDIA*' })
+}
+
 function Get-ToolVersion {
     param([string]$Name)
     $versionArgs = @('--version')
@@ -158,6 +170,10 @@ function Get-ToolVersion {
 $ModelsRoot = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($ModelsDir)
 $SeparatorDir = Join-Path $ModelsRoot 'separator'
 $AlignerDir = Join-Path $ModelsRoot 'aligner'
+$CudaDir = Join-Path $ModelsRoot 'cuda'
+$CudaRequirements = Join-Path $RepoRoot 'eval\transcribe\cuda-requirements.txt'
+$TranscribePython = Join-Path $RepoRoot 'eval\transcribe\.venv\Scripts\python.exe'
+$CudaStatus = 'skipped (-SkipModels)'
 
 Push-Location $RepoRoot
 try {
@@ -197,6 +213,25 @@ try {
             '--directory', 'workers/align', 'run', 'python', 'tools/fetch_aligner_model.py',
             '--dest', $AlignerDir
         )
+
+        if ($SkipCuda) {
+            Write-Step 'Skipping the CUDA libraries (-SkipCuda)'
+            $CudaStatus = 'skipped (-SkipCuda)'
+        }
+        elseif (-not (Test-NvidiaGpu)) {
+            Write-Step 'Skipping the CUDA libraries (no NVIDIA GPU found)'
+            $CudaStatus = 'skipped (no NVIDIA GPU found); transcription runs on the CPU'
+        }
+        else {
+            # NVIDIA's license keeps these out of uv.lock; the hashes in the
+            # requirements file pin the exact wheels.
+            Write-Step "Installing the CUDA libraries for transcription into $CudaDir (about 1.4 GB)"
+            Invoke-Native -Description 'uv pip install (CUDA libraries)' -FilePath 'uv' -Arguments @(
+                'pip', 'install', '--target', $CudaDir, '--python', $TranscribePython,
+                '--no-deps', '--require-hashes', '-r', $CudaRequirements
+            )
+            $CudaStatus = $CudaDir
+        }
     }
 
     Write-Step 'Summary'
@@ -212,6 +247,7 @@ try {
         Write-Host "Separation model: $SeparatorDir"
         Write-Host "Aligner model:    $AlignerDir"
     }
+    Write-Host "CUDA libraries:   $CudaStatus"
     Write-Host ''
     Write-Host 'Next: read the first section of eval/README.md, which explains how to place songs.'
 }

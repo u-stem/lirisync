@@ -1,5 +1,6 @@
+import { existsSync } from "node:fs";
 import { mkdir } from "node:fs/promises";
-import { resolve } from "node:path";
+import { delimiter, resolve } from "node:path";
 import { parseArgs } from "node:util";
 import { assertModelFile } from "./src/model-file";
 import {
@@ -10,6 +11,7 @@ import {
   parsePipelineOptions,
   pipelineLogPath,
   pipelineSteps,
+  prependPath,
   resultPaths,
   separatorModelPath,
   stepEnv,
@@ -63,9 +65,11 @@ async function runStep(
   log(`==> [${index}/${total}] ${step.name}\n`);
   // The steps run on the same bun as this command, not whichever is on PATH.
   const command = step.command === "bun" ? process.execPath : step.command;
+  const extraPath = step.pathPrepend.filter((dir) => existsSync(dir));
+  for (const dir of extraPath) log(`    PATH += ${dir}\n`);
   const child = Bun.spawn([command, ...step.args], {
     cwd,
-    env: stepEnv(process.env),
+    env: prependPath(stepEnv(process.env), extraPath, delimiter),
     stdin: "inherit",
     stdout: "pipe",
     stderr: "pipe",
@@ -98,6 +102,7 @@ async function main(): Promise<void> {
       "out-dir": { type: "string" },
       "songs-dir": { type: "string" },
       song: { type: "string", multiple: true },
+      device: { type: "string" },
     },
     strict: true,
   });

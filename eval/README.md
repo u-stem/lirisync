@@ -123,7 +123,9 @@ uv --directory eval/transcribe run lirisync-transcribe --model Systran/faster-wh
 | `--overwrite` | 既にある `asr/<name>.json` を置き換えます。付けないと、あるときはエラーです |
 | `--skip-existing` | 既に `asr/<name>.json` がある曲を飛ばします。`--overwrite` とは同時に使えません |
 
-- GPU（`--device cuda`、または `auto` で GPU が見つかったとき）には、NVIDIA のドライバと、ctranslate2 が要求する CUDA のライブラリが要ります。必要な版は ctranslate2 の版で変わるので、ここには書きません。[CTranslate2 の導入手順](https://opennmt.net/CTranslate2/installation.html)を見てください。CPU（`--device cpu`）でも動きますが、大きなモデルでは遅くなります
+- GPU（`--device cuda`、または `auto` で GPU が見つかったとき）には、NVIDIA のドライバと、ctranslate2 が要求する CUDA のライブラリ（cuBLAS と cuDNN）が要ります。`auto` は GPU が見つかれば、ライブラリがなくても GPU を選び、`cublas64_12.dll is not found` のようなエラーで止まります。そのときは `--device cpu` を付けるか、ライブラリを入れます
+- Windows では、`scripts/setup-windows.ps1` がライブラリを `<ModelsDir>\cuda` に入れます（版は `eval/transcribe/cuda-requirements.txt`）。`bun run eval:all` は、その `bin` ディレクトリを書き起こしの `PATH` に足します。`lirisync-transcribe` を直接動かすときは、`<ModelsDir>\cuda\nvidia\cublas\bin`、`<ModelsDir>\cuda\nvidia\cudnn\bin`、`<ModelsDir>\cuda\nvidia\cuda_nvrtc\bin` を自分で `PATH` に足してください。ほかの OS では、[CTranslate2 の導入手順](https://opennmt.net/CTranslate2/installation.html)を見てください
+- CPU（`--device cpu`）でも動きますが、大きなモデルでは遅くなります
 - モデルは初回に Hugging Face のキャッシュへダウンロードされます。2 回目からは再利用します
 - 言語は日本語（`ja`）に固定し、単語ごとの時刻を付けます。単語の文字列は、空白を含めて書き起こしの出力のまま `text` に入れます
 - 曲ごとに `asr/<name>.meta.json` も書きます。キーはすべて camelCase です。モデル（`model`）、faster-whisper・ctranslate2・av の版（`fasterWhisper`、`ctranslate2`、`av`）、要求したデバイスと計算型（`device`、`computeType`）、実際に使われたもの（`deviceUsed`、`computeTypeUsed`）、ビーム幅（`beamSize`）、VAD の有無（`vad`）、言語（`language`）、使った音声ファイル（`audio`）、揃えた開始の数（`clampedStarts`）を記録します。結果を比べるときの手がかりです
@@ -144,7 +146,7 @@ bun run eval:all
 次の 4 つを順に、それぞれ子プロセスとして実行します。各手順の前に、標準エラー出力へ `==> [n/4] <name>` を出します。
 
 1. `separate`：`bun run eval:separate --skip-existing` と同じです。ミックスからボーカルを分離します
-2. `transcribe`：`lirisync-transcribe --skip-existing` と同じです。ボーカルを書き起こします。`--device` は渡さないので `auto` です
+2. `transcribe`：`lirisync-transcribe --skip-existing` と同じです。ボーカルを書き起こします。`--device` は、`eval:all` に指定したときだけ渡します（既定は `auto`）
 3. `eval surface`：`bun run eval --refine --spelling surface --perturb` と同じです
 4. `eval kana`：同じ評価を `--spelling kana` で実行します
 
@@ -156,11 +158,13 @@ bun run eval:all
 | `--out-dir <path>` | 結果の JSON を書き出すディレクトリ。なければ作ります。既定は `eval/results` |
 | `--songs-dir <path>` | 曲のディレクトリ。既定は `eval/songs` |
 | `--song <slug>` | 処理する曲を絞ります。繰り返して複数指定できます。4 つの手順すべてに渡します |
+| `--device <device>` | 書き起こしのデバイス。`auto`、`cpu`、`cuda` のどれか。指定しなければ書き起こしの既定（`auto`） |
 
 - 長い処理を始める前に、`uv` が `PATH` にあること、分離モデルのファイル、整列モデルのディレクトリ（`model.int8.onnx` と `vocab.json`）、曲が 1 つ以上あることを確かめます。曲がないときは「曲の置き方」を見るよう案内するエラーで止まります
 - 手順が 0 以外の終了コードで終わったら、`<name> failed (exit code N)` のエラーで止まり、後続の手順は走らせません。同じコマンドをもう一度実行すると続きから進みます。`separate` と `transcribe` は `--skip-existing` 付きで走るので、終えた曲を飛ばすためです。設定を変えて取り直すときは、このコマンドでなく各コマンドを `--overwrite` 付きで実行してください
 - 出力は `<out-dir>/<asr>-surface.json` と `<out-dir>/<asr>-kana.json` の 2 つです。形は `--out` の JSON と同じで、歌詞の文面は入らないのでコミットしてかまいません。完了すると、書き出した 2 つのパスを標準エラー出力に出します
-- 書き起こしは `--device auto` で走ります。CUDA が使えないときは CPU になり、大きなモデルでは遅くなります。分離と第 2 段も CPU だけで走ります
+- 書き起こしは、`--device` を指定しなければ `auto` で走ります。GPU が見つかると、CUDA のライブラリがなくても GPU を選びます（上の「書き起こし」の注意を見てください）。分離と第 2 段は CPU だけで走ります
+- 書き起こしの手順では、`<models-dir>/cuda` の下の CUDA のライブラリの `bin` ディレクトリのうち、あるものを `PATH` の先頭に足し、`PATH += <dir>` と表示します。ないときは何も足しません
 - 画面に出す内容（各手順の出力を含む）は、すべて `eval/logs/eval-all.log` にも書きます。実行のたびに上書きし、先頭に実行したコマンドと開始時刻を書きます。オプションの誤りやモデルの欠けで早く止まったときも、そのエラーが入ります。このファイルはコミットしません
 - 成功しても失敗しても、最後にログのパスと `bun run eval:log` の案内を標準エラー出力に出します
 - ログが開けない、または書けないときは、警告を 1 回出し、ログなしで続けます。途中までしか書けていないログを共有しないよう、このときは最後の案内を出しません
