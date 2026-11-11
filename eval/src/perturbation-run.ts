@@ -63,6 +63,8 @@ export function stagePredictor(
     request: Omit<RefineRequest, "lyrics" | "windows">;
     /** Shift added to every refined start, as in the baseline. */
     offsetMs?: number;
+    /** Shift of every window start, as in the baseline (see `windowsFromAnchors`). */
+    startShiftMs?: number;
   } | null,
 ): Predict {
   return async (lyrics) => {
@@ -74,7 +76,7 @@ export function stagePredictor(
     const lines = await refine.refiner.refine({
       ...refine.request,
       lyrics,
-      windows: windowsFromAnchors(anchored),
+      windows: windowsFromAnchors(anchored, refine.startShiftMs),
     });
     return {
       anchor,

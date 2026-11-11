@@ -25,6 +25,7 @@ import {
 } from "./src/refine-options";
 import {
   addStatusCounts,
+  clampedWindowCount,
   countStatuses,
   formatStatusCounts,
   type StatusCounts,
@@ -115,6 +116,7 @@ async function runPerturbations(
               margin: refine.options.margin,
             },
             offsetMs: refine.options.offset,
+            startShiftMs: refine.options.margin - refine.options.marginBefore,
           },
     );
     const started = performance.now();
@@ -150,6 +152,8 @@ async function runPerturbations(
 type RefineJson = {
   spelling: RefineOptions["spelling"];
   marginMs: number;
+  /** Margin ahead of stage 1's start; `marginMs` unless `--margin-before-ms` is given. */
+  marginBeforeMs: number;
   /** Shift added to every refined start; 0 unless `--offset-ms` is given. */
   offsetMs: number;
   report: Report;
@@ -186,7 +190,10 @@ async function refineSong(
     audioPath,
     modelDir: options.modelDir,
     lyrics: song.lyrics,
-    windows: windowsFromAnchors(anchored),
+    windows: windowsFromAnchors(
+      anchored,
+      options.margin - options.marginBefore,
+    ),
     spelling: options.spelling,
     ignored: [],
     margin: options.margin,
@@ -216,6 +223,7 @@ async function main(): Promise<void> {
       spelling: { type: "string" },
       "margin-ms": { type: "string" },
       "offset-ms": { type: "string" },
+      "margin-before-ms": { type: "string" },
     },
     strict: true,
   });
@@ -315,6 +323,16 @@ async function main(): Promise<void> {
             `[${index + 1}/${songs.length}] ${song.slug}: refined in ${seconds.toFixed(1)} s\n`,
           );
         }
+        const shift = refineOptions.margin - refineOptions.marginBefore;
+        const clamped = anchoredBySong.reduce(
+          (sum, lines) => sum + clampedWindowCount(lines, shift),
+          0,
+        );
+        if (clamped > 0) {
+          process.stderr.write(
+            `note: ${clamped} lines have a window shorter than ${shift} ms; they keep more than ${refineOptions.marginBefore} ms of margin before stage 1's start\n`,
+          );
+        }
       } catch (error) {
         refineFailure = { error };
       }
@@ -363,7 +381,7 @@ async function main(): Promise<void> {
         counts: countStatuses(lines),
       }));
       process.stdout.write(
-        `\nStage 2: refine (spelling ${refineOptions.spelling}, margin ${refineOptions.margin} ms${refineOptions.offset === 0 ? "" : `, offset ${refineOptions.offset} ms`})\n\n${formatReport(refineReport)}`,
+        `\nStage 2: refine (spelling ${refineOptions.spelling}, margin ${refineOptions.margin} ms${refineOptions.marginBefore === refineOptions.margin ? "" : `, margin before ${refineOptions.marginBefore} ms`}${refineOptions.offset === 0 ? "" : `, offset ${refineOptions.offset} ms`})\n\n${formatReport(refineReport)}`,
       );
       process.stdout.write(`\n${formatStatusCounts(songCounts)}`);
       const verdict = stageTwoVerdict(
@@ -374,6 +392,7 @@ async function main(): Promise<void> {
       refineJson = {
         spelling: refineOptions.spelling,
         marginMs: refineOptions.margin,
+        marginBeforeMs: refineOptions.marginBefore,
         offsetMs: refineOptions.offset,
         report: refineReport,
         statuses: {

@@ -138,6 +138,19 @@ describe("stagePredictor", () => {
     ]);
   });
 
+  test("moves the window starts by the start shift", async () => {
+    const refiner = new ShiftRefiner();
+    await stagePredictor(new SecondsAnchorer(), [], {
+      refiner,
+      request: refineBase,
+      startShiftMs: 200,
+    })(lyrics);
+    expect(refiner.requests[0]?.windows[0]).toEqual({
+      start: parseMs(5200),
+      end: parseMs(5500),
+    });
+  });
+
   test("shifts the stage 2 predictions by the offset", async () => {
     const predictions = await stagePredictor(new SecondsAnchorer(), [], {
       refiner: new ShiftRefiner(),

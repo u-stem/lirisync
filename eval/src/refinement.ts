@@ -6,13 +6,36 @@ import {
 } from "@lirisync/core";
 import type { Prediction } from "./metrics";
 
-/** The window of each line: where stage 1 anchored it, `null` for the rest. */
+/**
+ * The window of each line: where stage 1 anchored it, `null` for the rest.
+ * `startShiftMs` moves each start later (earlier when negative), kept within
+ * 0 and the window's end. The worker cuts the window widened by one margin on
+ * both sides, so a shift of `margin - before` leaves `before` ms of margin
+ * ahead of stage 1's start while the margin after the end stays.
+ */
 export function windowsFromAnchors(
   lines: readonly AnchoredLine[],
+  startShiftMs = 0,
 ): (LineWindow | null)[] {
-  return lines.map((line) =>
-    line.status === "anchor" ? { start: line.start, end: line.end } : null,
-  );
+  return lines.map((line) => {
+    if (line.status !== "anchor") return null;
+    const shifted = Math.min(line.end, Math.max(0, line.start + startShiftMs));
+    return { start: parseMs(shifted), end: line.end };
+  });
+}
+
+/**
+ * How many anchored lines have a window shorter than `startShiftMs`: their
+ * start stops at the end, so the worker leaves more margin ahead of stage 1's
+ * start than was asked for.
+ */
+export function clampedWindowCount(
+  lines: readonly AnchoredLine[],
+  startShiftMs: number,
+): number {
+  return lines.filter(
+    (line) => line.status === "anchor" && line.start + startShiftMs > line.end,
+  ).length;
 }
 
 /**
