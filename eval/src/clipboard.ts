@@ -33,3 +33,28 @@ export function clipboardCommand(
   if (platform === "darwin") return { argv: ["pbcopy"], stdin: "file" };
   return null;
 }
+
+/** Whether `clipboardCommand` has a command for `platform`. */
+export function hasClipboardCommand(platform: NodeJS.Platform): boolean {
+  return clipboardCommand(platform, "") !== null;
+}
+
+/** Puts the UTF-8 text file at `path` on the clipboard. Throws when it cannot. */
+export async function copyFileToClipboard(
+  path: string,
+  platform: NodeJS.Platform,
+): Promise<void> {
+  const command = clipboardCommand(platform, path);
+  if (command === null) {
+    throw new Error(`no clipboard command on ${platform}`);
+  }
+  const child = Bun.spawn(command.argv, {
+    stdin: command.stdin === "file" ? Bun.file(path) : "ignore",
+    stdout: "inherit",
+    stderr: "inherit",
+  });
+  const exitCode = await child.exited;
+  if (exitCode !== 0) {
+    throw new Error(`${command.argv[0]} failed (exit code ${exitCode})`);
+  }
+}

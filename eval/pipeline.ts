@@ -2,6 +2,7 @@ import { existsSync } from "node:fs";
 import { mkdir } from "node:fs/promises";
 import { delimiter, join, resolve } from "node:path";
 import { parseArgs } from "node:util";
+import { copyFileToClipboard, hasClipboardCommand } from "./src/clipboard";
 import { assertModelFile } from "./src/model-file";
 import {
   alignerModelDir,
@@ -14,6 +15,7 @@ import {
   prependPath,
   resultPaths,
   separatorModelPath,
+  shouldCopyLog,
   stepEnv,
 } from "./src/pipeline-plan";
 import { assertAlignerModelDir } from "./src/refine-options";
@@ -28,6 +30,9 @@ const repoRoot = resolve(import.meta.dir, "..");
 const runLog = openRunLog(pipelineLogPath(repoRoot), (message) =>
   process.stderr.write(`warning: ${message}\n`),
 );
+
+/** Set once the flags are read; a run that fails before that is not copied. */
+let copyLog = false;
 
 function toLog(chunk: string | Uint8Array): void {
   runLog.write(chunk);
@@ -141,8 +146,14 @@ async function main(): Promise<void> {
       "songs-dir": { type: "string" },
       song: { type: "string", multiple: true },
       device: { type: "string" },
+      "no-copy-log": { type: "boolean", default: false },
     },
     strict: true,
+  });
+  copyLog = shouldCopyLog({
+    noCopyLog: values["no-copy-log"],
+    interactive: process.stderr.isTTY === true,
+    supported: hasClipboardCommand(process.platform),
   });
   const options = parsePipelineOptions(values, process.platform, repoRoot);
   const labelsReady = await assertReady(options);
@@ -169,11 +180,27 @@ main()
     log(`error: ${reason}\n`);
     process.exitCode = 1;
   })
-  .finally(() => {
-    if (runLog.path !== null) {
-      log(
-        `Log: ${runLog.path}\nCopy it to the clipboard with: bun run eval:log\n`,
+  .finally(async () => {
+    const path = runLog.path;
+    if (path !== null) log(`Log: ${path}\n`);
+    runLog.close();
+    if (path === null) return;
+    if (!copyLog) {
+      // eval:log would fail the same way where there is no clipboard command.
+      if (hasClipboardCommand(process.platform)) {
+        process.stderr.write(
+          "Copy it to the clipboard with: bun run eval:log\n",
+        );
+      }
+      return;
+    }
+    try {
+      await copyFileToClipboard(path, process.platform);
+      process.stderr.write("Copied the log to the clipboard\n");
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : String(error);
+      process.stderr.write(
+        `warning: could not copy the log (${reason}); run bun run eval:log\n`,
       );
     }
-    runLog.close();
   });

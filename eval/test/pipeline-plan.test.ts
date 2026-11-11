@@ -8,6 +8,7 @@ import {
   pipelineLogPath,
   pipelineSteps,
   prependPath,
+  shouldCopyLog,
   stepEnv,
 } from "../src/pipeline-plan";
 
@@ -338,6 +339,32 @@ describe("logHeader", () => {
     expect(header.split("\n")[0]).toBe(
       '# bun run eval:all --songs-dir "C:\\My Songs"',
     );
+  });
+});
+
+describe("shouldCopyLog", () => {
+  test("copies after a run in a terminal", () => {
+    expect(
+      shouldCopyLog({ noCopyLog: false, interactive: true, supported: true }),
+    ).toBe(true);
+  });
+
+  test("does not copy when asked not to", () => {
+    expect(
+      shouldCopyLog({ noCopyLog: true, interactive: true, supported: true }),
+    ).toBe(false);
+  });
+
+  test("does not copy where there is no clipboard command", () => {
+    expect(
+      shouldCopyLog({ noCopyLog: false, interactive: true, supported: false }),
+    ).toBe(false);
+  });
+
+  test("does not copy outside a terminal", () => {
+    expect(
+      shouldCopyLog({ noCopyLog: false, interactive: false, supported: true }),
+    ).toBe(false);
   });
 });
 
