@@ -265,6 +265,11 @@ describe("pipelineSteps", () => {
     expect(transcribe?.pathPrepend).toEqual(cudaLibraryDirs(opts.modelsDir));
   });
 
+  test("marks only the eval steps as needing lyrics and labels", () => {
+    const flags = pipelineSteps(options()).map((step) => step.needsLabels);
+    expect(flags).toEqual([false, false, true, true]);
+  });
+
   test("puts nothing on PATH for the other steps", () => {
     const steps = pipelineSteps(options());
     const others = [steps[0], steps[2], steps[3]];

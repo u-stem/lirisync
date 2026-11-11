@@ -17,10 +17,10 @@ __pycache__/
 # Rust
 target/
 
-# Evaluation inputs (copyrighted audio and lyrics stay local)
-eval/songs/*/audio/
-eval/songs/*/lyrics.txt
-eval/songs/*/asr/
+# Evaluation inputs (copyrighted audio and lyrics stay local). Everything in
+# a song folder is ignored except the labels, wherever a file is put.
+eval/songs/*/*
+!eval/songs/*/labels.txt
 
 # Logs of eval:all (local paths; shared by hand when asked)
 eval/logs/

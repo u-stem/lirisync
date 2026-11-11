@@ -78,12 +78,14 @@ export async function loadSong(
   assertAsrName(asrName);
   try {
     const dir = join(songsDir, slug);
-    const [labelsText, lyricsText, asrText] = await Promise.all([
+    const [labelsText, rawLyrics, asrText] = await Promise.all([
       readFile(join(dir, "labels.txt"), "utf8"),
       readFile(join(dir, "lyrics.txt"), "utf8"),
       readFile(join(dir, "asr", `${asrName}.json`), "utf8"),
     ]);
-    const truth = parseAudacityLabels(labelsText);
+    // Notepad may save a byte order mark; it is not part of the first line.
+    const lyricsText = rawLyrics.replace(/^\uFEFF/, "");
+    const truth = parseAudacityLabels(labelsText.replace(/^\uFEFF/, ""));
     if (truth.length === 0) {
       throw new Error("labels.txt has no labels");
     }

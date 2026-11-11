@@ -47,6 +47,8 @@ export type PipelineStep = {
   args: string[];
   /** Directories to put first on PATH, used only when they exist. */
   pathPrepend: string[];
+  /** Whether the step reads `lyrics.txt` and `labels.txt`. */
+  needsLabels: boolean;
 };
 
 /** `value`, unless it is empty: `resolve("")` would quietly be the current directory. */
@@ -247,6 +249,7 @@ export function pipelineSteps(options: PipelineOptions): PipelineStep[] {
         ...songFlags,
       ],
       pathPrepend: [],
+      needsLabels: false,
     },
     {
       name: "transcribe",
@@ -267,18 +270,21 @@ export function pipelineSteps(options: PipelineOptions): PipelineStep[] {
         ...(options.device === undefined ? [] : ["--device", options.device]),
       ],
       pathPrepend: cudaLibraryDirs(options.modelsDir),
+      needsLabels: false,
     },
     {
       name: "eval surface",
       command: "bun",
       args: evalArgs("surface", surfaceOut),
       pathPrepend: [],
+      needsLabels: true,
     },
     {
       name: "eval kana",
       command: "bun",
       args: evalArgs("kana", kanaOut),
       pathPrepend: [],
+      needsLabels: true,
     },
   ];
 }

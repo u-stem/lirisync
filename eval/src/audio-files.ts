@@ -4,6 +4,9 @@ import { join } from "node:path";
 /** The stem `lirisync-transcribe` reads by default; also what we write. */
 export const VOCALS_STEM = "vocals";
 
+/** The stem of the song's mix, which separation reads by default. */
+export const MIX_STEM = "mix";
+
 /** Compared without case, as Windows file names are. */
 export function sameName(a: string, b: string): boolean {
   return a.toLowerCase() === b.toLowerCase();
