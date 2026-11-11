@@ -1,23 +1,38 @@
+import { closeSync, mkdirSync, openSync, writeSync } from "node:fs";
 import { mkdir } from "node:fs/promises";
-import { resolve } from "node:path";
+import { dirname, resolve } from "node:path";
 import { parseArgs } from "node:util";
 import { assertModelFile } from "./src/model-file";
 import {
   alignerModelDir,
+  logHeader,
   type PipelineOptions,
   type PipelineStep,
   parsePipelineOptions,
+  pipelineLogPath,
   pipelineSteps,
   resultPaths,
   separatorModelPath,
+  stepEnv,
 } from "./src/pipeline-plan";
 import { assertAlignerModelDir } from "./src/refine-options";
 import { listSongs, selectSongs } from "./src/song-set";
+import { teeStream } from "./src/tee";
 
 const repoRoot = resolve(import.meta.dir, "..");
+const logPath = pipelineLogPath(repoRoot);
+
+/** Everything shown is also written here, so the run can be shared whole. */
+mkdirSync(dirname(logPath), { recursive: true });
+const logFd = openSync(logPath, "w");
+
+function toLog(chunk: string | Uint8Array): void {
+  writeSync(logFd, chunk);
+}
 
 function log(text: string): void {
   process.stderr.write(text);
+  toLog(text);
 }
 
 /** Checks the inputs of every step, so a wrong path fails before hours of work. */
@@ -50,11 +65,16 @@ async function runStep(
   const command = step.command === "bun" ? process.execPath : step.command;
   const child = Bun.spawn([command, ...step.args], {
     cwd,
+    env: stepEnv(process.env),
     stdin: "inherit",
-    stdout: "inherit",
-    stderr: "inherit",
+    stdout: "pipe",
+    stderr: "pipe",
   });
-  const exitCode = await child.exited;
+  const [, , exitCode] = await Promise.all([
+    teeStream(child.stdout, [(chunk) => process.stdout.write(chunk), toLog]),
+    teeStream(child.stderr, [(chunk) => process.stderr.write(chunk), toLog]),
+    child.exited,
+  ]);
   if (exitCode !== 0) {
     throw new Error(
       `${step.name} failed (exit code ${exitCode}). Run the same command again to continue: finished songs are skipped in separate and transcribe`,
@@ -63,7 +83,10 @@ async function runStep(
 }
 
 async function main(): Promise<void> {
+  const args = process.argv.slice(2);
+  toLog(logHeader(args, process.platform, new Date()));
   const { values } = parseArgs({
+    args,
     options: {
       "models-dir": { type: "string" },
       "asr-model": { type: "string" },
@@ -88,8 +111,13 @@ async function main(): Promise<void> {
   }
 }
 
-main().catch((error: unknown) => {
-  const reason = error instanceof Error ? error.message : String(error);
-  process.stderr.write(`error: ${reason}\n`);
-  process.exitCode = 1;
-});
+main()
+  .catch((error: unknown) => {
+    const reason = error instanceof Error ? error.message : String(error);
+    log(`error: ${reason}\n`);
+    process.exitCode = 1;
+  })
+  .finally(() => {
+    log(`Log: ${logPath}\nCopy it to the clipboard with: bun run eval:log\n`);
+    closeSync(logFd);
+  });

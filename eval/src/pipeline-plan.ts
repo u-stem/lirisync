@@ -95,6 +95,38 @@ export function parsePipelineOptions(
   };
 }
 
+/** Where `eval:all` writes everything it and its steps print. */
+export function pipelineLogPath(repoRoot: string): string {
+  return join(repoRoot, "eval", "logs", "eval-all.log");
+}
+
+/** Set for the steps unless the caller already set them. */
+const STEP_ENV_DEFAULTS = {
+  // Piped Python output would otherwise use the Windows code page, which the
+  // log, read as UTF-8, would garble.
+  PYTHONUTF8: "1",
+  // Windows without developer mode cannot make the cache's symlinks; the
+  // cache still works, and the warning only buries the real output.
+  HF_HUB_DISABLE_SYMLINKS_WARNING: "1",
+};
+
+/** The environment of the steps: `base` with the step defaults filled in. */
+export function stepEnv(
+  base: Readonly<Record<string, string | undefined>>,
+): Record<string, string | undefined> {
+  return { ...STEP_ENV_DEFAULTS, ...base };
+}
+
+/** The first lines of the log, so a pasted log says what ran where. */
+export function logHeader(
+  args: readonly string[],
+  platform: NodeJS.Platform,
+  startedAt: Date,
+): string {
+  const command = ["bun run eval:all", ...args].join(" ");
+  return `# ${command}\n# started ${startedAt.toISOString()} on ${platform}\n`;
+}
+
 /** Where the separation model sits under the models directory. */
 export function separatorModelPath(modelsDir: string): string {
   return join(modelsDir, "separator", "sep-all-int8.onnx");

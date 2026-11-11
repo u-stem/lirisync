@@ -1,9 +1,12 @@
 import { describe, expect, test } from "bun:test";
 import { join, resolve } from "node:path";
 import {
+  logHeader,
   type PipelineOptions,
   parsePipelineOptions,
+  pipelineLogPath,
   pipelineSteps,
+  stepEnv,
 } from "../src/pipeline-plan";
 
 const REPO = resolve("repo-root");
@@ -230,5 +233,48 @@ describe("pipelineSteps", () => {
   test("adds no --song flag without songs", () => {
     const steps = pipelineSteps(options());
     expect(steps.some((step) => step.args.includes("--song"))).toBe(false);
+  });
+});
+
+describe("pipelineLogPath", () => {
+  test("puts the log under eval/logs", () => {
+    expect(pipelineLogPath(REPO)).toBe(
+      join(REPO, "eval", "logs", "eval-all.log"),
+    );
+  });
+});
+
+describe("stepEnv", () => {
+  test("keeps the given variables", () => {
+    const env = stepEnv({ PATH: "/bin" });
+    expect(env.PATH).toBe("/bin");
+  });
+
+  test("makes Python write UTF-8", () => {
+    const env = stepEnv({});
+    expect(env.PYTHONUTF8).toBe("1");
+  });
+
+  test("silences the symlink warning", () => {
+    const env = stepEnv({});
+    expect(env.HF_HUB_DISABLE_SYMLINKS_WARNING).toBe("1");
+  });
+
+  test("lets a set variable win over the default", () => {
+    const env = stepEnv({ PYTHONUTF8: "0" });
+    expect(env.PYTHONUTF8).toBe("0");
+  });
+});
+
+describe("logHeader", () => {
+  test("names the arguments, the start and the platform", () => {
+    const header = logHeader(
+      ["--song", "a"],
+      "win32",
+      new Date("2026-11-11T01:02:03.000Z"),
+    );
+    expect(header).toBe(
+      "# bun run eval:all --song a\n# started 2026-11-11T01:02:03.000Z on win32\n",
+    );
   });
 });

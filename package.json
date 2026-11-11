@@ -13,6 +13,7 @@
     "test": "bun test",
     "eval": "bun eval/run.ts",
     "eval:all": "bun eval/pipeline.ts",
+    "eval:log": "bun eval/copy-log.ts",
     "eval:separate": "bun eval/separate.ts",
     "licenses": "bun scripts/licenses/check-npm.ts"
   },
