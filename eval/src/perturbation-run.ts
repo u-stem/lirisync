@@ -61,6 +61,8 @@ export function stagePredictor(
   refine: {
     refiner: Refiner;
     request: Omit<RefineRequest, "lyrics" | "windows">;
+    /** Shift added to every refined start, as in the baseline. */
+    offsetMs?: number;
   } | null,
 ): Predict {
   return async (lyrics) => {
@@ -74,7 +76,10 @@ export function stagePredictor(
       lyrics,
       windows: windowsFromAnchors(anchored),
     });
-    return { anchor, refine: toRefinedPredictions(anchored, lines) };
+    return {
+      anchor,
+      refine: toRefinedPredictions(anchored, lines, refine.offsetMs),
+    };
   };
 }
 

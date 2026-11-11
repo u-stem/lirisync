@@ -238,11 +238,12 @@ bun run eval --asr <name>
 | `--asr <name>` | 使う書き起こし（`asr/<name>.json`）。必須。英数字、`.`、`_`、`-` だけ使えます |
 | `--songs-dir <path>` | 曲のディレクトリ。既定は `eval/songs` |
 | `--song <slug>` | 評価する曲を絞ります。繰り返して複数指定できます。存在しない slug はエラーです |
-| `--out <path>` | 結果を JSON で書き出します（`{ asr, worker, report }`。`--refine` のときは `refine`、`--perturb` のときは `perturbation` も。`--refine` と `--perturb` を併用したときは、第 2 段の摂動を `refine.perturbation` に入れます） |
+| `--out <path>` | 結果を JSON で書き出します（`{ asr, worker, report, lines }`。`lines` は曲ごとの、ラベルのある行の正解と各段の予測（行番号・時刻・信頼度。歌詞の文面は入れません）。`--refine` のときは `refine`、`--perturb` のときは `perturbation` も。`--refine` と `--perturb` を併用したときは、第 2 段の摂動を `refine.perturbation` に入れます） |
 | `--perturb` | 歌詞を壊して整列し直す摂動テストを、通常の評価のあとに実行します。既定はオフで、付けないと通常の出力は変わりません。「摂動テスト」を見てください |
 | `--refine <model dir>` | 第 2 段（強制整列）も測ります。「第 2 段を測る」を見てください |
 | `--spelling surface\|kana` | 第 2 段で強制する文字。`--refine` が要ります |
 | `--margin-ms <n>` | 第 2 段で窓の前後に足す余白。`--refine` が要ります |
+| `--offset-ms <n>` | 第 2 段の開始時刻に一律に足す量（負は早める）。一定の補正でどこまで良くなるかを測るためのもので、既定は 0。`--refine` が要ります |
 
 `--refine` を付けないときは第 1 段だけを測ります。第 1 段の信頼度は一致率（行の文字のうち ASR と完全に一致した割合）です。そのため、信頼度を使う 3 つの指標（沈黙誤差率、AUROC、信頼度の分布）は第 1 段では参考値です。第 2 段の信頼度は「第 2 段を測る」にあります。
 
@@ -268,8 +269,9 @@ bun run eval --asr <name>
 | `--refine <model dir>` | 整列モデルのディレクトリ（`model.int8.onnx` と `vocab.json` を含む）。付けたときだけ第 2 段を実行します |
 | `--spelling surface\|kana` | 強制する文字。`surface` は歌詞の字面のまま、`kana` は辞書の読みをひらがなにしたもの。既定は `surface` |
 | `--margin-ms <n>` | 各行の窓（第 1 段が見つけた区間）の前後に足す余白。0 以上の整数のミリ秒。既定は 1000 |
+| `--offset-ms <n>` | `refined` の行の開始時刻に一律に足す量。整数のミリ秒で、負は早めます（0 より前にはしません）。既定は 0。製品の補正量を決めるものではなく、一定の補正でどこまで縮むかを測るためのものです。指定したときは見出しに `offset <n> ms` を出し、JSON の `refine.offsetMs` に入れます。摂動テストにも同じ量を使います |
 
-- `--spelling` と `--margin-ms` を `--refine` なしで指定するとエラーです
+- `--spelling`、`--margin-ms`、`--offset-ms` を `--refine` なしで指定するとエラーです
 - ワーカーを起動する前に、モデルのディレクトリに `model.int8.onnx` と `vocab.json` があること、全曲に `audio/vocals.*` がちょうど 1 つあること（名前の最後の拡張子を除いた部分が `vocals`、大文字と小文字は区別しない。「ボーカルを分離する」と同じ基準です）を確かめます
 - 第 1 段で `anchor` になった行だけが窓を持ちます。窓は第 1 段の開始から終了までで、ほかの行は窓なしで `refine` に渡します
 - **第 2 段の予測**
@@ -278,7 +280,7 @@ bun run eval --asr <name>
   - 第 1 段が位置を出さなかった行は、開始なし（不一致）のままです
 - この信頼度は暫定です。誤差との関係で較正していないので、沈黙誤差率と AUROC は参考値として読んでください
 - 報告は第 1 段、第 2 段の順に出ます（見出しで区別します）。続けて、曲ごとと全体の状態ごとの行数（`refined`、`no_window`、`no_text`、`too_long`、`too_short`）と、モデルの語彙にない文字の数（`skipped chars`）の合計を出します
-- `--out` の JSON には `refine: { spelling, marginMs, report, statuses, verdict }` が足されます。`report` は第 2 段の予測の報告（第 1 段と同じ形）、`statuses` は全体（`overall`）と曲ごと（`songs`）の行数です。歌詞の文面は入れません。`--refine` なしの出力と JSON は変わりません
+- `--out` の JSON には `refine: { spelling, marginMs, offsetMs, report, statuses, verdict }` が足され、`lines` の各行に第 2 段の予測（`stage2Ms`、`stage2Confidence`）が入ります。`report` は第 2 段の予測の報告（第 1 段と同じ形）、`statuses` は全体（`overall`）と曲ごと（`songs`）の行数です。歌詞の文面は入れません。`--refine` なしの出力と JSON は変わりません
 - `refine` の途中で失敗したときは、第 1 段の報告を表示し、`--out` にも書いたうえで（`refine` は入りません）、エラーで終わります。`--perturb` を付けていても摂動テストは走らず、標準エラー出力に `note: --perturb is skipped because stage 2 failed` を出します
 - 推論は今のところ CPU だけで、遅くなります。曲ごとの所要時間は標準エラー出力に出ます
 - `--perturb` と同時に指定すると、第 1 段と第 2 段の摂動を 1 回の実行で測ります。出力は `Stage 1 perturbation` と `Stage 2 perturbation` の 2 節になります。「摂動テスト」を見てください

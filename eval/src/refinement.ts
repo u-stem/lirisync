@@ -1,4 +1,9 @@
-import type { AnchoredLine, LineWindow, RefinedLine } from "@lirisync/core";
+import {
+  type AnchoredLine,
+  type LineWindow,
+  parseMs,
+  type RefinedLine,
+} from "@lirisync/core";
 import type { Prediction } from "./metrics";
 
 /** The window of each line: where stage 1 anchored it, `null` for the rest. */
@@ -24,7 +29,8 @@ export function refinedConfidence(logRatio: number): number {
  * Turns the output of both stages into metric predictions. Lines are numbered
  * from 1.
  *
- * - A refined line takes stage 2's start and its confidence.
+ * - A refined line takes stage 2's start, shifted by `offsetMs` (not before
+ *   0), and its confidence.
  * - A line stage 2 could not check but stage 1 anchored goes back to stage 1's
  *   start with confidence 0, so a position nothing confirmed is not counted
  *   as a trusted one.
@@ -33,6 +39,7 @@ export function refinedConfidence(logRatio: number): number {
 export function toRefinedPredictions(
   anchored: readonly AnchoredLine[],
   refined: readonly RefinedLine[],
+  offsetMs = 0,
 ): Prediction[] {
   if (anchored.length !== refined.length) {
     throw new Error(
@@ -45,7 +52,7 @@ export function toRefinedPredictions(
     if (second?.status === "refined") {
       return {
         line,
-        start: second.start,
+        start: parseMs(Math.max(0, second.start + offsetMs)),
         confidence: refinedConfidence(second.logRatio),
       };
     }

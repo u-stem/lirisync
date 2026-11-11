@@ -138,6 +138,17 @@ describe("stagePredictor", () => {
     ]);
   });
 
+  test("shifts the stage 2 predictions by the offset", async () => {
+    const predictions = await stagePredictor(new SecondsAnchorer(), [], {
+      refiner: new ShiftRefiner(),
+      request: refineBase,
+      offsetMs: -100,
+    })(lyrics);
+    expect(predictions.refine?.map((p) => p.start)).toEqual(
+      truth.map((t) => t.start),
+    );
+  });
+
   test("gives the stage 2 predictions of the refined lines", async () => {
     const predictions = await refiningPredictor()(lyrics);
     expect(predictions.refine?.map((p) => p.start)).toEqual(
