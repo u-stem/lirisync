@@ -43,6 +43,11 @@ import {
   type Song,
   selectSongs,
 } from "./src/song-set";
+import {
+  formatStageTwoVerdict,
+  type StageTwoVerdict,
+  stageTwoVerdict,
+} from "./src/stage-verdict";
 
 const repoRoot = resolve(import.meta.dir, "..");
 
@@ -150,6 +155,8 @@ type RefineJson = {
   };
   /** Only with `--perturb`: the same shape as the stage-1 `perturbation`. */
   perturbation?: PerturbationReport;
+  /** The adoption criteria for stage 2 against stage 1. */
+  verdict: StageTwoVerdict;
 };
 
 /** What stage 2 produced for one song. */
@@ -354,7 +361,13 @@ async function main(): Promise<void> {
         `\nStage 2: refine (spelling ${refineOptions.spelling}, margin ${refineOptions.margin} ms)\n\n${formatReport(refineReport)}`,
       );
       process.stdout.write(`\n${formatStatusCounts(songCounts)}`);
+      const verdict = stageTwoVerdict(
+        report.overall.errors,
+        refineReport.overall.errors,
+        perturbation?.refine ?? null,
+      );
       refineJson = {
+        verdict,
         spelling: refineOptions.spelling,
         marginMs: refineOptions.margin,
         report: refineReport,
@@ -378,6 +391,10 @@ async function main(): Promise<void> {
         `\n${formatPerturbationReport(perturbation.refine, "Stage 2 perturbation")}`,
       );
     }
+  }
+  if (refineJson !== undefined) {
+    // After the perturbation blocks, which one of its criteria reads.
+    process.stdout.write(`\n${formatStageTwoVerdict(refineJson.verdict)}`);
   }
   if (values.out !== undefined) {
     const out = resolve(values.out);
